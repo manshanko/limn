@@ -1,0 +1,15 @@
+[package]
+name = "limn"
+version = "0.1.0"
+authors = ["ManShanko <deathage@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ManShanko/limn"
+
+[profile.release]
+opt-level = "s"
+
+[dependencies]
+byteorder = "1.4.3"
+leb128 = "0.2.5"
+libloading = "0.7.3"
