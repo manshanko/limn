@@ -158,13 +158,14 @@ fn extract_bundle(
         }
 
         match file.ext {
+            // lua
             0xa14e8dfa2cd117e2 => {
                 for _ in 0..12 {
                     file.read_u8().unwrap();
                 }
 
                 let header = file.read_u32::<LE>().unwrap();
-                assert_eq!(header, 38423579);
+                assert!(header == 38423579 || header == 2186495515, "{:016x}.lua has unexpected header {header:08x}", file.name);
 
                 assert_eq!(file.read_u8().unwrap(), 0);
                 let path_len = leb128::read::unsigned(&mut file).unwrap();
@@ -173,7 +174,8 @@ fn extract_bundle(
                     lua.push(file.read_u8().unwrap() as char);
                 }
 
-                out.write_u32::<LE>(header).unwrap();
+                // always write valid LuaJIT header
+                out.write_u32::<LE>(38423579).unwrap();
                 out.write_u8(0).unwrap();
                 leb128::write::unsigned(&mut out, path_len).unwrap();
                 out.write_u8(b'@').unwrap();
