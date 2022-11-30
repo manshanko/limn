@@ -22,6 +22,14 @@ impl<'a> BundleFd<'a> {
         rdr.read_exact(&mut header)?;
         if header != [
             // bundle version
+            0x08, 0x00,
+
+            // unknown
+            0x00, 0xF0,
+            0x03, 0x00,
+            0x00, 0x00,
+        ] && header != [
+            // bundle version
             0x07, 0x00,
 
             // unknown
@@ -29,7 +37,7 @@ impl<'a> BundleFd<'a> {
             0x03, 0x00,
             0x00, 0x00,
         ] {
-            panic!();
+            panic!("unknown bundle version {}", header[0]);
         }
 
         let num_files = rdr.read_u32::<LE>()?;
