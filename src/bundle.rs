@@ -329,7 +329,6 @@ impl<'a, 'b: 'a> FilesIter<'b> {
                 let size = self.oodle.total_out as u64 + total_size as u64;
                 assert_eq!(size, self.oodle.total_size);
             }
-
             Ok(Some(Entry {
                 rdr: &mut self.oodle,
                 variants,
