@@ -79,8 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|i| i.get())
                 .unwrap_or(0)
                 .saturating_sub(1)
-                .min(1)
-                .max(12);
+                .max(1);
             thread::scope(|s| {
                 for _ in 0..num_threads {
                     s.spawn(|| {
@@ -348,10 +347,6 @@ fn extract_bundle(
             continue;
         }
 
-        let path_slice;
-        (path_slice, shared_buffer2) = shared_buffer2.split_at_mut(0x1000);
-        let out_path = out_path_from(root, path_slice, file_name, Err(file.ext));
-
         if let Some(duplicates) = duplicates {
             let key = (file.name, file.ext);
             let mut duplicates = duplicates.lock().unwrap();
@@ -466,7 +461,7 @@ fn extract_bundle(
 
                         let slice;
                         (slice, _) = shared_buffer2.split_at_mut(0x1000);
-                        let out_path = out_path_from(out_path.parent().unwrap(), slice, file_name, Ok("dds"));
+                        let out_path = out_path_from(root, slice, file_name, Ok("dds"));
                         if let Some(parent) = out_path.parent() {
                             fs::create_dir_all(parent).unwrap();
                         }
@@ -514,6 +509,10 @@ fn extract_bundle(
                 }
             }
             _ => {
+                let path_slice;
+                (path_slice, _) = shared_buffer2.split_at_mut(0x1000);
+                let out_path = out_path_from(root, path_slice, file_name, Err(file.ext));
+
                 shared_buffer.clear();
 
                 fs::create_dir_all(out_path.parent().unwrap())?;
