@@ -393,7 +393,7 @@ fn extract_bundle(
 
                 let slice;
                 (slice, _) = shared_buffer2.split_at_mut(0x1000);
-                let path = out_path_from(root, slice, Ok(lua), Ok("lua"));
+                let path = out_path_from(root, slice, Ok(lua), None);
                 //let path = root.join(Path::new(&lua));
                 //assert!(path.starts_with(root), "does not start with:\n{}\n{}", root.display(), lua);
                 fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -461,7 +461,7 @@ fn extract_bundle(
 
                         let slice;
                         (slice, _) = shared_buffer2.split_at_mut(0x1000);
-                        let out_path = out_path_from(root, slice, file_name, Ok("dds"));
+                        let out_path = out_path_from(root, slice, file_name, Some(Ok("dds")));
                         if let Some(parent) = out_path.parent() {
                             fs::create_dir_all(parent).unwrap();
                         }
@@ -511,7 +511,7 @@ fn extract_bundle(
             _ => {
                 let path_slice;
                 (path_slice, _) = shared_buffer2.split_at_mut(0x1000);
-                let out_path = out_path_from(root, path_slice, file_name, Err(file.ext));
+                let out_path = out_path_from(root, path_slice, file_name, Some(Err(file.ext)));
 
                 shared_buffer.clear();
 
@@ -541,7 +541,12 @@ fn extract_bundle(
     Ok(count)
 }
 
-fn out_path_from<'a>(root: &Path, buffer: &'a mut [u8], file_name: Result<&str, u64>, ext_name: Result<&str, u64>) -> &'a Path {
+fn out_path_from<'a>(
+    root: &Path,
+    buffer: &'a mut [u8],
+    file_name: Result<&str, u64>,
+    ext_name: Option<Result<&str, u64>>,
+) -> &'a Path {
     let root = root.to_str().unwrap();
     let total = buffer.len();
     let mut into = &mut buffer[..];
@@ -550,17 +555,19 @@ fn out_path_from<'a>(root: &Path, buffer: &'a mut [u8], file_name: Result<&str, 
         Ok(s) => write!(&mut into, "{s}").unwrap(),
         Err(i) => write!(&mut into, "{i:016x}").unwrap(),
     }
-    match ext_name {
-        Ok(s) => write!(&mut into, ".{s}").unwrap(),
-        Err(hash) => {
-            if let Some((_, ext)) = FILE_EXTENSION
-                .binary_search_by(|probe| probe.0.cmp(&hash))
-                .ok()
-                .and_then(|i| FILE_EXTENSION.get(i))
-            {
-                write!(&mut into, ".{ext}").unwrap();
-            } else {
-                write!(&mut into, ".{hash:016x}").unwrap();
+    if let Some(ext_name) = ext_name {
+        match ext_name {
+            Ok(s) => write!(&mut into, ".{s}").unwrap(),
+            Err(hash) => {
+                if let Some((_, ext)) = FILE_EXTENSION
+                    .binary_search_by(|probe| probe.0.cmp(&hash))
+                    .ok()
+                    .and_then(|i| FILE_EXTENSION.get(i))
+                {
+                    write!(&mut into, ".{ext}").unwrap();
+                } else {
+                    write!(&mut into, ".{hash:016x}").unwrap();
+                }
             }
         }
     }
