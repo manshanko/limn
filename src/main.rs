@@ -27,6 +27,16 @@ use hash::FILE_EXTENSION;
 use hash::MurmurHash;
 mod oodle;
 
+macro_rules! write_help {
+    ($dst:expr, $($arg:tt)*) => {{
+        let len = $dst.len();
+        let mut into = &mut $dst[..];
+        write!(&mut into, $($arg)*).unwrap();
+        let size = len - into.len();
+        std::str::from_utf8(&$dst[..size])
+    }}
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dictionary = fs::read_to_string("dictionary.txt");
     let (dictionary, skip_unknown) = if let Ok(data) = dictionary.as_ref() {
@@ -347,6 +357,25 @@ fn extract_bundle(
             continue;
         }
 
+        let file_name = match file_name {
+            Ok(s) => s,
+            Err(hash) => {
+                let buf;
+                (buf, shared_buffer2) = shared_buffer2.split_at_mut(0x10);
+                write_help!(buf, "{hash:016x}").unwrap()
+            }
+        };
+
+        let ext_name = match FILE_EXTENSION.binary_search_by(|probe| probe.0.cmp(&file.ext)) {
+            Ok(i) => FILE_EXTENSION[i].1,
+            Err(_) => {
+                let hash = file.ext;
+                let buf;
+                (buf, shared_buffer2) = shared_buffer2.split_at_mut(0x10);
+                write_help!(buf, "{hash:016x}").unwrap()
+            }
+        };
+
         if let Some(duplicates) = duplicates {
             let key = (file.name, file.ext);
             let mut duplicates = duplicates.lock().unwrap();
@@ -380,20 +409,20 @@ fn extract_bundle(
                 for b in lua[..len].iter_mut() {
                     *b = file.read_u8().unwrap();
                 }
-                let lua = std::str::from_utf8(&lua[..len]).unwrap();
+                let lua_path = std::str::from_utf8(&lua[..len]).unwrap();
 
                 // always write valid LuaJIT header
                 shared_buffer.write_u32::<LE>(38423579).unwrap();
                 shared_buffer.write_u8(0).unwrap();
                 leb128::write::unsigned(&mut *shared_buffer, path_len).unwrap();
                 shared_buffer.write_u8(b'@').unwrap();
-                shared_buffer.extend(lua.as_bytes());
+                shared_buffer.extend(lua_path.as_bytes());
                 //println!("{lua}");
                 io::copy(&mut file, &mut *shared_buffer).unwrap();
 
                 let slice;
                 (slice, _) = shared_buffer2.split_at_mut(0x1000);
-                let path = out_path_from(root, slice, Ok(lua), None);
+                let path = path_concat(root, slice, lua_path, None);
                 //let path = root.join(Path::new(&lua));
                 //assert!(path.starts_with(root), "does not start with:\n{}\n{}", root.display(), lua);
                 fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -461,7 +490,7 @@ fn extract_bundle(
 
                         let slice;
                         (slice, _) = shared_buffer2.split_at_mut(0x1000);
-                        let out_path = out_path_from(root, slice, file_name, Some(Ok("dds")));
+                        let out_path = path_concat(root, slice, file_name, Some("dds"));
                         if let Some(parent) = out_path.parent() {
                             fs::create_dir_all(parent).unwrap();
                         }
@@ -511,7 +540,7 @@ fn extract_bundle(
             _ => {
                 let path_slice;
                 (path_slice, _) = shared_buffer2.split_at_mut(0x1000);
-                let out_path = out_path_from(root, path_slice, file_name, Some(Err(file.ext)));
+                let out_path = path_concat(root, path_slice, file_name, Some(ext_name));
 
                 shared_buffer.clear();
 
@@ -541,35 +570,18 @@ fn extract_bundle(
     Ok(count)
 }
 
-fn out_path_from<'a>(
+fn path_concat<'a>(
     root: &Path,
     buffer: &'a mut [u8],
-    file_name: Result<&str, u64>,
-    ext_name: Option<Result<&str, u64>>,
+    file_name: &str,
+    ext_name: Option<&str>,
 ) -> &'a Path {
     let root = root.to_str().unwrap();
     let total = buffer.len();
     let mut into = &mut buffer[..];
-    write!(&mut into, "{root}/").unwrap();
-    match file_name {
-        Ok(s) => write!(&mut into, "{s}").unwrap(),
-        Err(i) => write!(&mut into, "{i:016x}").unwrap(),
-    }
+    write!(&mut into, "{root}/{file_name}").unwrap();
     if let Some(ext_name) = ext_name {
-        match ext_name {
-            Ok(s) => write!(&mut into, ".{s}").unwrap(),
-            Err(hash) => {
-                if let Some((_, ext)) = FILE_EXTENSION
-                    .binary_search_by(|probe| probe.0.cmp(&hash))
-                    .ok()
-                    .and_then(|i| FILE_EXTENSION.get(i))
-                {
-                    write!(&mut into, ".{ext}").unwrap();
-                } else {
-                    write!(&mut into, ".{hash:016x}").unwrap();
-                }
-            }
-        }
+        write!(&mut into, ".{ext_name}").unwrap();
     }
     let len = total - into.len();
     let path = std::str::from_utf8(&buffer[..len]).unwrap();
