@@ -15,7 +15,6 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Component;
 use std::path::Path;
-//use std::path::PathBuf;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use byteorder::LE;
@@ -282,7 +281,7 @@ impl Pool {
 fn no_escape(path: &Path) -> bool {
     for part in path.components() {
         match part {
-            Component::RootDir => return false,
+            //Component::RootDir => return false,
             Component::ParentDir => return false,
             _ => (),
         }
@@ -444,7 +443,7 @@ fn extract_bundle(
                         file.read(&mut buffer).unwrap();
                         let data_path = data_path_from(&buffer);
                         let parent = target.parent().unwrap_or_else(|| &Path::new("."));
-                        let path = parent.join(data_path);
+                        let path = path_concat(parent, shared_buffer2, data_path, None);
                         assert!(path.starts_with(parent));
                         let Ok(file) = File::open(path) else {
                             if cfg!(debug_assertions) {
@@ -462,8 +461,8 @@ fn extract_bundle(
                 };
 
                 let rdr: &mut dyn Read = match &mut rdr {
-                    Ok(ref mut f) => f,
-                    Err(ref mut f) => f,
+                    Ok(f) => f,
+                    Err(f) => f,
                 };
 
                 let kind = rdr.read_u32::<LE>().unwrap();
@@ -472,41 +471,61 @@ fn extract_bundle(
                 if kind == 1 {
                     let deflate_size = rdr.read_u32::<LE>().unwrap() as usize;
                     let inflate_size = rdr.read_u32::<LE>().unwrap() as usize;
-                    {
-                        if shared_buffer.len() < deflate_size + inflate_size + 0x100000 {
-                            if shared_buffer.capacity() < deflate_size + inflate_size + 0x100000 {
-                                shared_buffer.reserve((deflate_size + inflate_size + 0x100000) * 2);
-                            }
 
-                            shared_buffer.resize(deflate_size + inflate_size + 0x100000, 0);
+                    if shared_buffer.len() < deflate_size + inflate_size + 0x100000 {
+                        if shared_buffer.capacity() < deflate_size + inflate_size + 0x100000 {
+                            shared_buffer.reserve((deflate_size + inflate_size + 0x100000) * 2);
                         }
 
-                        let (mut in_buf, shared) = shared_buffer.split_at_mut(deflate_size);
-                        let (mut out_buf, shared) = shared.split_at_mut(inflate_size);
-                        let (mut scratch, _shared) = shared.split_at_mut(0x100000);
-                        rdr.read_exact(&mut in_buf).unwrap();
-                        let size = oodle.decompress(&in_buf, &mut out_buf, &mut scratch).unwrap();
-                        assert_eq!(size, out_buf.len() as u64);
-
-                        let slice;
-                        (slice, _) = shared_buffer2.split_at_mut(0x1000);
-                        let out_path = path_concat(root, slice, file_name, Some("dds"));
-                        if let Some(parent) = out_path.parent() {
-                            fs::create_dir_all(parent).unwrap();
-                        }
-
-                        fs::write(&out_path, out_buf).unwrap();
+                        shared_buffer.resize(deflate_size + inflate_size + 0x100000, 0);
                     }
 
+                    assert!(inflate_size >= 148, "{inflate_size}");
+                    let (mut in_buf, shared) = shared_buffer.split_at_mut(deflate_size);
+                    let (mut out_buf, shared) = shared.split_at_mut(inflate_size);
+                    let (mut scratch, _shared) = shared.split_at_mut(0x100000);
+                    rdr.read_exact(&mut in_buf).unwrap();
+                    let size = oodle.decompress(&in_buf, &mut out_buf, &mut scratch).unwrap();
+                    assert_eq!(size, out_buf.len() as u64);
+
+                    let fourcc = u32::from_le_bytes(<[u8; 4]>::try_from(&out_buf[84..88]).unwrap());
+
                     assert_eq!(67, rdr.read_u32::<LE>().unwrap());
-                    let mut skip = [0; 144];
+                    rdr.read_u32::<LE>().unwrap();
+                    let _num_mipmaps = rdr.read_u32::<LE>().unwrap();
+                    let largest_width = rdr.read_u32::<LE>().unwrap();
+                    let largest_height = rdr.read_u32::<LE>().unwrap();
+                    let mut skip = [0; 128];
 
                     rdr.read_exact(&mut skip).unwrap();
                     let _image_size = u32::from_le_bytes(<[u8; 4]>::try_from(&skip[60..64]).unwrap());
 
                     let meta_size = u16::try_from(rdr.read_u32::<LE>().unwrap()).unwrap();
-                    if meta_size > 0 {
+
+                    let slice;
+                    (slice, _) = shared_buffer2.split_at_mut(0x400);
+                    let out_path = path_concat(root, slice, file_name, Some("dds"));
+                    if let Some(parent) = out_path.parent() {
+                        fs::create_dir_all(parent).unwrap();
+                    }
+
+                    if meta_size == 0 {
+                        let _unknown = rdr.read_u32::<LE>().unwrap();
+                        assert!(rdr.read_u8().is_err());
+
+                        fs::write(out_path, &out_buf).unwrap();
+                    } else {
                         assert!(has_high_res);
+                        assert_eq!(0x44583130_u32.swap_bytes(), fourcc);
+
+                        let mut dxt10 = &out_buf[128..148];
+                        let _encoding_kind = dxt10.read_u32::<LE>().unwrap();
+                        let dimension = dxt10.read_u32::<LE>().unwrap();
+                        let _misc_flags = dxt10.read_u32::<LE>().unwrap();
+                        let array_size = dxt10.read_u32::<LE>().unwrap();
+                        let _misc_flags2 = dxt10.read_u32::<LE>().unwrap();
+                        assert_eq!(3, dimension);
+                        assert_eq!(1, array_size);
 
                         let num_chunks = u16::try_from(rdr.read_u32::<LE>().unwrap()).unwrap();
                         assert_eq!(8 + num_chunks * 4, meta_size);
@@ -525,10 +544,86 @@ fn extract_bundle(
                         let mut stream = [0; 31];
                         rdr.read_exact(&mut stream).unwrap();
                         assert!(rdr.read_u8().is_err());
-                        count += 1;
-                    } else {
-                        let _unknown = rdr.read_u32::<LE>().unwrap();
-                        assert!(rdr.read_u8().is_err());
+
+                        let base_width = u32::from_le_bytes(<[u8; 4]>::try_from(&out_buf[16..20]).unwrap());
+                        let base_pitch = u32::from_le_bytes(<[u8; 4]>::try_from(&out_buf[20..24]).unwrap());
+
+                        // assume all textures by this point are block compressed
+                        let block_size = 4 * base_pitch / base_width;
+
+                        let pitch = largest_width / 4 * block_size;
+                        let flags = u32::from_le_bytes(<[u8; 4]>::try_from(&out_buf[8..12]).unwrap());
+                        let flags = flags & !0x20000;
+                        out_buf[8..12].copy_from_slice(&flags.to_le_bytes());
+                        out_buf[12..16].copy_from_slice(&largest_height.to_le_bytes());
+                        out_buf[16..20].copy_from_slice(&largest_width.to_le_bytes());
+                        out_buf[20..24].copy_from_slice(&pitch.to_le_bytes());
+                        out_buf[28..32].copy_from_slice(&0_u32.to_le_bytes());
+                        //out_buf[140..144].copy_from_slice(&0_u32.to_le_bytes());
+
+                        let mut out_fd = File::create(out_path)?;
+                        out_fd.write_all(&out_buf[..148]).unwrap();
+
+                        let chunk_width_pixel = if block_size == 8 {
+                            128
+                        } else if block_size == 16 {
+                            64
+                        } else {
+                            unreachable!()
+                        };
+                        let chunk_width = largest_width / chunk_width_pixel / 4;
+                        let chunk_height = largest_height / 64 / 4;
+                        let num_chunks = chunk_width * chunk_height;
+                        assert!(chunks.len() >= num_chunks as usize);
+
+                        let window_size = (pitch * 64) as usize;
+                        if shared_buffer.len() < 0x11000 + 0x10000 + 0x100000 + window_size {
+                            if shared_buffer.capacity() < 0x11000 + 0x10000 + 0x100000 + window_size {
+                                shared_buffer.reserve((0x11000 + 0x10000 + 0x100000 + window_size) * 2);
+                            }
+
+                            shared_buffer.resize(0x11000 + 0x10000 + 0x100000 + window_size, 0);
+                        }
+
+                        let (in_buf, shared) = shared_buffer.split_at_mut(0x11000);
+                        let (mut out_buf, shared) = shared.split_at_mut(0x10000);
+                        let (mut scratch, shared) = shared.split_at_mut(0x100000);
+                        let (window, _shared) = shared.split_at_mut(window_size);
+
+                        let data_fd = {
+                            let data_path = data_path_from(&stream);
+                            let parent = target.parent().unwrap_or_else(|| &Path::new("."));
+                            let data_path = path_concat(parent, shared_buffer2, data_path, None);
+                            assert!(data_path.starts_with(parent));
+                            File::open(data_path)?
+                        };
+
+                        let slice;
+                        (slice, _) = shared_buffer2.split_at_mut(0x10000);
+                        let mut data_rdr = ChunkReader::new(slice, data_fd);
+                        for (i, &chunk) in chunks.iter().take(num_chunks as usize).enumerate() {
+                            let in_buf = &mut in_buf[..chunk as usize];
+                            data_rdr.read_exact(in_buf).unwrap();
+                            let size = oodle.decompress(in_buf, &mut out_buf, &mut scratch).unwrap();
+                            assert_eq!(size, out_buf.len() as u64);
+                            assert_eq!(size, 0x10000);
+
+                            let i = i as u32;
+                            if i > 0 && i % chunk_width == 0 {
+                                out_fd.write_all(&window).unwrap();
+                            }
+
+                            assert_eq!((pitch / chunk_width) as u64, size / 64);
+
+                            let row_size = (chunk_width_pixel * block_size) as usize;
+                            let chunk_x = (i % chunk_width) * chunk_width_pixel * block_size;
+                            for (row_i, row) in out_buf.chunks_exact(row_size).enumerate() {
+                                let row_i = row_i as u32;
+                                let start = chunk_x + row_i * pitch;
+                                window[start as usize..start as usize + row_size].copy_from_slice(row);
+                            }
+                        }
+                        out_fd.write_all(&window).unwrap();
                     }
                 } else if kind == 0 {
                     // looks to be uncompressed
@@ -586,7 +681,7 @@ fn path_concat<'a>(
     let len = total - into.len();
     let path = std::str::from_utf8(&buffer[..len]).unwrap();
     let path = Path::new(path);
-    assert!(no_escape(path));
+    assert!(no_escape(path), "{}", path.display());
     path
 }
 
