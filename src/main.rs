@@ -503,7 +503,15 @@ fn extract_bundle(
                             let parent = target.parent().unwrap_or_else(|| &Path::new("."));
                             let data_path = path_concat(parent, shared_buffer2, data_path, None);
                             assert!(data_path.starts_with(parent));
-                            File::open(data_path)?
+                            let Ok(data_fd) = File::open(data_path) else {
+                                if cfg!(debug_assertions) {
+                                    panic!("failed to load resource file at {}", data_path.display());
+                                } else {
+                                    eprintln!("failed to load resource file at {}", data_path.display());
+                                }
+                                continue;
+                            };
+                            data_fd
                         };
 
                         let slice;
