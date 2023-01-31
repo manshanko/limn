@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let count = AtomicUsize::new(0);
             let file_i = AtomicUsize::new(0);
 
-            let duplicates = &Mutex::new(HashSet::with_capacity(0x10000));
+            let duplicates = Mutex::new(HashMap::with_capacity(0x10000));
             let num_threads = thread::available_parallelism()
                 .map(|i| i.get())
                 .unwrap_or(0)
@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &dictionary,
                                     skip_unknown,
                                     false,
-                                    Some(duplicates),
+                                    Some(&duplicates),
                                     filter,
                                 ).unwrap();
                                 num_files.fetch_add(num, Ordering::SeqCst);
@@ -196,17 +196,6 @@ impl Pool {
     }
 }
 
-fn no_escape(path: &Path) -> bool {
-    for part in path.components() {
-        match part {
-            //Component::RootDir => return false,
-            Component::ParentDir => return false,
-            _ => (),
-        }
-    }
-    true
-}
-
 fn extract_bundle(
     target: &Path,
     oodle: &oodle::Oodle,
@@ -217,7 +206,7 @@ fn extract_bundle(
     dictionary: &HashMap<MurmurHash, &str>,
     skip_unknown: bool,
     as_blob: bool,
-    duplicates: Option<&Mutex<HashSet<(u64, u64)>>>,
+    duplicates: Option<&Mutex<HashMap<(u64, u64), u64>>>,
     filter: Option<u64>,
 ) -> io::Result<u32> {
     let shared_buffer = &mut pool.shared_buffer;
@@ -296,10 +285,11 @@ fn extract_bundle(
         if let Some(duplicates) = duplicates {
             let key = (file.name, file.ext);
             let mut duplicates = duplicates.lock().unwrap();
-            if duplicates.get(&key).is_some() {
+            if let Some(num_dupes) = duplicates.get_mut(&key) {
+                *num_dupes += 1;
                 continue;
             } else {
-                duplicates.insert(key);
+                duplicates.insert(key, 1);
             }
         }
 
@@ -581,6 +571,17 @@ fn extract_bundle(
     }
 
     Ok(count)
+}
+
+fn no_escape(path: &Path) -> bool {
+    for part in path.components() {
+        match part {
+            //Component::RootDir => return false,
+            Component::ParentDir => return false,
+            _ => (),
+        }
+    }
+    true
 }
 
 fn path_concat<'a>(
