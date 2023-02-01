@@ -18,13 +18,8 @@ mod texture;
 
 macro_rules! write_help {
     ($dst:expr, $($arg:tt)*) => {{
-        let len = $dst.len();
-        let mut into = &mut $dst[..];
-        write!(&mut into, $($arg)*).unwrap();
-        let size = len - into.len();
-        let slice;
-        (slice, $dst) = $dst.split_at_mut(size);
-        std::str::from_utf8(slice).unwrap()
+        let s = crate::file::write_slice($dst, format_args!($($arg)*)).unwrap();
+        std::str::from_utf8(s).unwrap()
     }}
 }
 
@@ -70,16 +65,16 @@ pub(crate) fn extract(
 
     let file_name = match options.dictionary.get(&MurmurHash::from(entry.name)) {
         Some(s) => s,
-        None => write_help!(shared, "{:016x}", entry.name),
+        None => write_help!(&mut shared, "{:016x}", entry.name),
     };
 
     let ext_name = match FILE_EXTENSION.binary_search_by(|probe| probe.0.cmp(&entry.ext)) {
         Ok(i) => FILE_EXTENSION[i].1,
-        Err(_) => write_help!(shared, "{:016x}", entry.ext),
+        Err(_) => write_help!(&mut shared, "{:016x}", entry.ext),
     };
 
     if options.as_blob || extractor.is_none() {
-        let (out, _) = path_concat(options.out, &mut shared, file_name, Some(ext_name));
+        let out = path_concat(options.out, &mut shared, file_name, Some(ext_name));
 
         shared2.clear();
         shared2.reserve(0x1000);
@@ -102,7 +97,7 @@ pub(crate) fn extract(
         io::copy(&mut &shared2[..], &mut fd).unwrap();
         io::copy(&mut entry, &mut fd).map(|copied| copied + shared2.len() as u64)
     } else {
-        let (out, shared) = path_concat(options.out, &mut shared, file_name, Some(ext_name));
+        let out = path_concat(options.out, &mut shared, file_name, Some(ext_name));
 
         let extractor = extractor.unwrap();
         extractor.extract(&mut entry, out, shared, shared2, options)
@@ -148,6 +143,22 @@ fn split_vec<'a, const N: usize>(
     (bufs.map(|buf| buf.unwrap()), buffer)
 }
 
+fn write_slice<'a>(
+    buffer: &mut &'a mut [u8],
+    args: std::fmt::Arguments<'_>,
+) -> io::Result<&'a [u8]> {
+    let mut buf: &mut [u8] = &mut [];
+    std::mem::swap(buffer, &mut buf);
+    let total = buf.len();
+    let mut into = &mut buf[..];
+    into.write_fmt(args)?;
+    let len = total - into.len();
+    let slice;
+    (slice, buf) = buf.split_at_mut(len);
+    std::mem::swap(buffer, &mut buf);
+    Ok(slice)
+}
+
 fn no_escape(path: &Path) -> bool {
     for part in path.components() {
         match part {
@@ -161,23 +172,19 @@ fn no_escape(path: &Path) -> bool {
 
 fn path_concat<'a>(
     root: &Path,
-    buffer: &'a mut [u8],
-    file_name: &str,
-    ext_name: Option<&str>,
-) -> (&'a Path, &'a mut [u8]) {
+    buffer: &mut &'a mut [u8],
+    path: &str,
+    ext: Option<&str>,
+) -> &'a Path {
     let root = root.to_str().unwrap();
-    let total = buffer.len();
-    let mut into = &mut buffer[..];
-    write!(&mut into, "{root}/{file_name}").unwrap();
-    if let Some(ext_name) = ext_name {
-        write!(&mut into, ".{ext_name}").unwrap();
-    }
-    let len = total - into.len();
-    let (slice, buf) = buffer.split_at_mut(len);
-    let path = std::str::from_utf8(slice).unwrap();
+    let path = if let Some(ext) = ext {
+        write_help!(buffer, "{root}/{path}.{ext}")
+    } else {
+        write_help!(buffer, "{root}/{path}")
+    };
     let path = Path::new(path);
     assert!(no_escape(path), "{}", path.display());
-    (path, buf)
+    path
 }
 
 fn data_path_from(buffer: &[u8]) -> Option<&str> {

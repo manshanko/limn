@@ -27,8 +27,7 @@ impl Extractor for TextureParser {
                 let mut buffer = [0_u8; 31];
                 entry.read(&mut buffer).unwrap();
                 let data_path = data_path_from(&buffer).unwrap();
-                let path;
-                (path, shared) = path_concat(options.target, shared, data_path, None);
+                let path = path_concat(options.target, &mut shared, data_path, None);
                 assert!(path.starts_with(options.target));
                 let Ok(file) = File::open(path) else {
                     if cfg!(debug_assertions) {
@@ -80,7 +79,7 @@ impl Extractor for TextureParser {
             let meta_size = u16::try_from(rdr.read_u32::<LE>().unwrap()).unwrap();
 
             let file_name = file_path.file_stem().unwrap().to_str().unwrap();
-            let (out_path, shared) = path_concat(options.out, shared, file_name, Some("dds"));
+            let out_path = path_concat(options.out, &mut shared, file_name, Some("dds"));
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).unwrap();
             }
@@ -161,7 +160,7 @@ impl Extractor for TextureParser {
 
                 let data_fd = {
                     let data_path = data_path_from(&stream).unwrap();
-                    let (data_path, _) = path_concat(options.target, shared, data_path, None);
+                    let data_path = path_concat(options.target, &mut shared, data_path, None);
                     assert!(data_path.starts_with(options.target));
                     let Ok(data_fd) = File::open(data_path) else {
                         if cfg!(debug_assertions) {

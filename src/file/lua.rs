@@ -44,7 +44,7 @@ impl Extractor for LuaParser {
 
         io::copy(&mut entry, &mut *shared_flex).unwrap();
 
-        let (path, _shared) = path_concat(options.out, shared, lua_path, None);
+        let path = path_concat(options.out, &mut shared, lua_path, None);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, &shared_flex).unwrap();
 
