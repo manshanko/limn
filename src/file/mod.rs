@@ -15,6 +15,7 @@ use byteorder::LE;
 
 mod bones;
 mod lua;
+mod package;
 mod texture;
 
 macro_rules! write_help {
@@ -52,6 +53,7 @@ pub(crate) fn extract(
     let extractor: Option<&'static dyn Extractor> = 'res: {Some(match entry.ext {
         0x18dead01056b72e9 => &bones::BonesParser,
         0xa14e8dfa2cd117e2 => &lua::LuaParser,
+        0xad9c6d9ed1e5e77a => &package::PackageParser,
         0xcd4238c6a0c69e32 => &texture::TextureParser,
         _ => break 'res None,
     })};

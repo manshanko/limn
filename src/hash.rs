@@ -2,11 +2,12 @@ use std::sync::LazyLock;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-pub(crate) static FILE_EXTENSION: LazyLock<[(u64, &'static str); 49]> = LazyLock::new(|| {
+pub(crate) static FILE_EXTENSION: LazyLock<[(u64, &'static str); 50]> = LazyLock::new(|| {
     let mut a = [
         "animation",
         "animation_curves",
         "bik",
+        "bk2",
         "blend_set",
         "bones",
         "chroma",
@@ -59,7 +60,7 @@ pub(crate) static FILE_EXTENSION: LazyLock<[(u64, &'static str); 49]> = LazyLock
 });
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct MurmurHash(u64);
+pub struct MurmurHash(pub(crate) u64);
 
 impl MurmurHash {
     pub fn new<T: AsRef<[u8]>>(key: T) -> Self {
