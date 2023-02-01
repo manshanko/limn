@@ -44,6 +44,8 @@ impl Extractor for PackageParser {
             }
         }
         write!(&mut shared_flex, "]").unwrap();
+        assert_eq!(1, entry.read_u8().unwrap());
+        assert!(entry.read_u8().is_err());
 
         let parent = file_path.parent().unwrap();
         let name = file_path.file_name().unwrap().to_str().unwrap();

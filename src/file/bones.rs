@@ -48,8 +48,8 @@ impl Extractor for BonesParser {
             write!(&mut shared_flex, "\"{}\"", std::str::from_utf8(&shared[..len]).unwrap()).unwrap();
             len = 0;
         }
-        assert!(entry.read_u8().is_err());
         write!(&mut shared_flex, "]}}").unwrap();
+        assert!(entry.read_u8().is_err());
 
         let parent = file_path.parent().unwrap();
         let name = file_path.file_name().unwrap().to_str().unwrap();
