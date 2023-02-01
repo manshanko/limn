@@ -13,6 +13,7 @@ use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use byteorder::LE;
 
+mod bones;
 mod lua;
 mod texture;
 
@@ -49,6 +50,7 @@ pub(crate) fn extract(
     options: &ExtractOptions<'_>,
 ) -> io::Result<u64> {
     let extractor: Option<&'static dyn Extractor> = 'res: {Some(match entry.ext {
+        0x18dead01056b72e9 => &bones::BonesParser,
         0xa14e8dfa2cd117e2 => &lua::LuaParser,
         0xcd4238c6a0c69e32 => &texture::TextureParser,
         _ => break 'res None,
