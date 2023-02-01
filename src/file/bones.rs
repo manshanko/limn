@@ -54,6 +54,7 @@ impl Extractor for BonesParser {
         let parent = file_path.parent().unwrap();
         let name = file_path.file_name().unwrap().to_str().unwrap();
         let path = path_concat(parent, &mut shared, name, Some("json"));
+        fs::create_dir_all(parent).unwrap();
         fs::write(path, &shared_flex).unwrap();
 
         Ok(shared_flex.len() as u64)

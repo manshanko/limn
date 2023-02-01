@@ -213,7 +213,7 @@ fn extract_bundle(
             }
         }
 
-        let in_dictionary = options.dictionary.get(&MurmurHash::from(file.name)).is_none();
+        let in_dictionary = options.dictionary.get(&MurmurHash::from(file.name)).is_some();
 
         if options.skip_unknown && !in_dictionary && file.ext != /*lua*/0xa14e8dfa2cd117e2 {
             continue;
