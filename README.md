@@ -31,6 +31,12 @@ Fatshark uses a private fork of LuaJIT in Darktide. All `lua` files are stored a
 
 ### texture
 
-Primarily stored as DDS files that sometimes reference (unsupported) larger raw images.
+`texture` files are stored as DDS. For mipmap levels 64KiB or larger Darktide deduplicates them to a resource file at `data/**/*`.
 
-Use [texconv](https://github.com/Microsoft/DirectXTex/wiki/Texconv) for unpacking DDS files it supports.
+limn will export the highest quality mipmap level found.
+
+For converting DDS to PNG [texconv](https://github.com/Microsoft/DirectXTex/wiki/Texconv) and [ffmpeg](https://ffmpeg.org/) can be used:
+```bash
+texconv -ft bmp -f B8G8R8A8_UNORM -y texture_file.dds
+ffmpeg -i texture_file.BMP texture_file.png
+```
