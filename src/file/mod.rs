@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 use std::io::Read;
 use std::io::Write;
+use std::mem;
 use std::path::Component;
 use std::path::Path;
 use crate::bundle::Entry;
@@ -137,29 +138,28 @@ fn split_vec<'a, const N: usize>(
     }
 
     let mut buffer = &mut buffer[..];
-    let mut bufs = parts.map(|_| None);
+    let mut bufs = parts.map(|_| &mut [] as &mut [u8]);
     for (i, buf) in bufs.iter_mut().enumerate() {
         let len = parts[i];
         let slice;
         (slice, buffer) = buffer.split_at_mut(len);
-        *buf = Some(slice);
+        *buf = slice;
     }
-    (bufs.map(|buf| buf.unwrap()), buffer)
+    (bufs, buffer)
 }
 
 fn write_slice<'a>(
     buffer: &mut &'a mut [u8],
     args: std::fmt::Arguments<'_>,
 ) -> io::Result<&'a [u8]> {
-    let mut buf: &mut [u8] = &mut [];
-    std::mem::swap(buffer, &mut buf);
+    let mut buf = mem::replace(buffer, &mut []);
     let total = buf.len();
     let mut into = &mut buf[..];
     into.write_fmt(args)?;
     let len = total - into.len();
     let slice;
     (slice, buf) = buf.split_at_mut(len);
-    std::mem::swap(buffer, &mut buf);
+    mem::swap(buffer, &mut buf);
     Ok(slice)
 }
 
