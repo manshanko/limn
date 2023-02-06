@@ -9,6 +9,7 @@ use std::path::Path;
 use crate::bundle::Entry;
 use crate::oodle::Oodle;
 use crate::hash::MurmurHash;
+use crate::hash::MurmurHash32;
 use crate::hash::FILE_EXTENSION;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
@@ -42,6 +43,7 @@ pub(crate) struct ExtractOptions<'a> {
     pub(crate) out: &'a Path,
     pub(crate) oodle: &'a Oodle,
     pub(crate) dictionary: &'a HashMap<MurmurHash, &'a str>,
+    pub(crate) dictionary_short: &'a HashMap<MurmurHash32, &'a str>,
     pub(crate) skip_unknown: bool,
     pub(crate) as_blob: bool,
 }

@@ -66,6 +66,10 @@ impl MurmurHash {
     pub fn new<T: AsRef<[u8]>>(key: T) -> Self {
         Self(murmurhash64(key.as_ref()))
     }
+
+    pub fn clone_short(&self) -> MurmurHash32 {
+        MurmurHash32(((self.0 >> 32) & 0xffffffff) as u32)
+    }
 }
 
 impl Hash for MurmurHash {
@@ -76,6 +80,21 @@ impl Hash for MurmurHash {
 
 impl From<u64> for MurmurHash {
     fn from(key: u64) -> Self {
+        Self(key)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct MurmurHash32(pub(crate) u32);
+
+impl Hash for MurmurHash32 {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        h.write_u32(self.0)
+    }
+}
+
+impl From<u32> for MurmurHash32 {
+    fn from(key: u32) -> Self {
         Self(key)
     }
 }

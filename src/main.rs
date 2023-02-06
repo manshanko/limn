@@ -64,6 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             out: Path::new("./out"),
             oodle: &oodle,
             dictionary: &dictionary,
+            dictionary_short: &dictionary.iter().map(|(k, v)| (k.clone_short(), *v)).collect(),
             skip_unknown,
             as_blob: false,
         };
