@@ -231,8 +231,9 @@ fn extract_bundle(
             }
         }
 
-        if let Ok(_wrote) = file::extract(file, pool, options) {
-            count += 1;
+        match file::extract(file, pool, options) {
+            Ok(_wrote) => count += 1,
+            Err(e) => eprintln!("{e}"),
         }
     }
 
