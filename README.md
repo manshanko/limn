@@ -29,6 +29,18 @@ limn only supports a few file types used in Darktide bundles.
 
 Fatshark uses a private fork of LuaJIT in Darktide. All `lua` files are stored as LuaJIT bytecode that, aside from a header version change, is compatible with existing tooling for LuaJIT (like any decompilers).
 
+### package
+
+`package` files in Darktide are a list of other files with a extension hash and name hash per entry.
+
+For example most `unit` files share the same name as their `package` file which can then be referenced for the hashes of `texture` or other files used by that `unit`.
+
+### strings
+
+If filtering for only `strings` files then limn will either:
+1. extract strings with known keys if a dictionary is used
+2. extract all strings
+
 ### texture
 
 `texture` files are stored as DDS. For mipmap levels 64KiB or larger Darktide deduplicates them to a resource file at `data/**/*`.
