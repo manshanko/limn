@@ -216,7 +216,11 @@ fn extract_bundle(
 
         let in_dictionary = options.dictionary.get(&MurmurHash::from(file.name)).is_some();
 
-        if options.skip_unknown && !in_dictionary && file.ext != /*lua*/0xa14e8dfa2cd117e2 {
+        if options.skip_unknown
+            && !in_dictionary
+            && file.ext != /*lua*/0xa14e8dfa2cd117e2
+            && !(filter == Some(file.ext) && file.ext == /*strings*/0x0d972bab10b40fd3)
+        {
             continue;
         }
 

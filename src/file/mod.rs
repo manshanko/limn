@@ -18,6 +18,7 @@ use byteorder::LE;
 mod bones;
 mod lua;
 mod package;
+mod strings;
 mod texture;
 
 macro_rules! write_help {
@@ -26,6 +27,7 @@ macro_rules! write_help {
         std::str::from_utf8(s).unwrap()
     }}
 }
+pub(crate) use write_help;
 
 trait Extractor {
     fn extract(
@@ -57,6 +59,7 @@ pub(crate) fn extract(
         0x18dead01056b72e9 => &bones::BonesParser,
         0xa14e8dfa2cd117e2 => &lua::LuaParser,
         0xad9c6d9ed1e5e77a => &package::PackageParser,
+        0x0d972bab10b40fd3 => &strings::StringsParser,
         0xcd4238c6a0c69e32 => &texture::TextureParser,
         _ => break 'res None,
     })};
@@ -65,8 +68,8 @@ pub(crate) fn extract(
         shared,
         shared2,
     } = pool;
-    if shared.len() < 0x40000 {
-        shared.resize(0x40000, 0);
+    if shared.len() < 0x100000 {
+        shared.resize(0x100000, 0);
     }
     let mut shared = &mut shared[..];
 
