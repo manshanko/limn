@@ -233,7 +233,7 @@ fn extract_bundle(
 
         match file::extract(file, pool, options) {
             Ok(_wrote) => count += 1,
-            Err(e) => eprintln!("{e}"),
+            Err(_e) => (),//eprintln!("{e}"),
         }
     }
 
