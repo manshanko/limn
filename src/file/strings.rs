@@ -67,13 +67,14 @@ impl Extractor for StringsParser {
         &self,
         entry: &mut Entry<'_, '_>,
         file_path: &Path,
-        mut shared: &mut [u8],
+        shared: &mut [u8],
         shared_flex: &mut Vec<u8>,
         options: &ExtractOptions<'_>,
     ) -> io::Result<u64> {
         let mut wrote = 0;
         let mut variant_i = 0;
         while let Some(variant) = entry.variants().get(variant_i) {
+            let mut shared = &mut shared[..];
             variant_i += 1;
             let kind = variant.kind;
             let variant_size = variant.body_size;
@@ -174,7 +175,9 @@ impl Extractor for StringsParser {
 
             let stem = file_path.file_stem().unwrap().to_str().unwrap();
             let file = write_help!(&mut shared, "{stem}.{lang}");
-            let out = path_concat(file_path.parent().unwrap(), &mut shared, file, Some("json"));
+            let parent = file_path.parent().unwrap();
+            fs::create_dir_all(parent)?;
+            let out = path_concat(parent, &mut shared, file, Some("json"));
             fs::write(out, &shared_flex)?;
 
             wrote += shared_flex.len() as u64;
