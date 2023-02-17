@@ -1,4 +1,4 @@
-#![feature(once_cell, cstr_from_bytes_until_nul)]
+#![feature(once_cell)]
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -40,7 +40,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os();
     args.next();
     let arg = args.next();
-    let path = arg.as_ref().map(Path::new);
+
+    let mut darktide_path;
+    let path = if arg.as_ref().filter(|p| p == &"-").is_some() {
+        darktide_path = steam_find::get_steam_app(1361210)?.path;
+        darktide_path.push("bundle");
+        Some(darktide_path.as_ref())
+    } else {
+        arg.as_ref().map(Path::new)
+    };
     if let Some(path) = path {
         let oodle = match oodle::Oodle::load("oo2core_8_win64.dll") {
             Ok(oodle) => oodle,
