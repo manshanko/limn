@@ -25,7 +25,7 @@ impl<'a, R: Read + Seek> ChunkReader<'a, R> {
 
     fn next_chunk(&mut self) -> io::Result<()> {
         self.offset = 0;
-        self.len = self.inner.read(&mut self.buffer[..])?;
+        self.len = self.inner.read(&mut self.buffer[..]).unwrap();
         Ok(())
     }
 }
@@ -41,18 +41,20 @@ impl<'a, R: Read + Seek> Read for ChunkReader<'a, R> {
 
         while fill > 0 {
             let copy = (self.len - self.offset).min(fill);
-            buf[read..read + copy].copy_from_slice(&self.buffer[self.offset..self.offset + copy]);
-
-            read += copy;
-            fill -= copy;
-            self.offset += copy;
             if copy == 0 {
-                break;
-            } else if self.len == self.offset {
-                self.next_chunk()?;
-                if self.len == 0 {
-                    break;
+                if self.offset == self.len {
+                    self.next_chunk()?;
+                    if self.len != 0 {
+                        continue;
+                    }
                 }
+                break;
+            } else {
+                buf[read..read + copy].copy_from_slice(&self.buffer[self.offset..self.offset + copy]);
+
+                read += copy;
+                fill -= copy;
+                self.offset += copy;
             }
         }
 
