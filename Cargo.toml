@@ -10,7 +10,7 @@ repository = "https://github.com/ManShanko/limn"
 opt-level = "s"
 
 [dependencies]
-steam_find = { git = "https://github.com/ManShanko/steam_find", rev = "1c951920461a02eab72e2bb92512da541a716e75" }
+steam_find = { git = "https://github.com/ManShanko/steam_find", rev = "8195dd0e8fff2a3cedf94fe130a9a08cbe70839e" }
 byteorder = "1.4.3"
 leb128 = "0.2.5"
 libloading = "0.7.3"
