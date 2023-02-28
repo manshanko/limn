@@ -176,9 +176,8 @@ impl Extractor for StringsParser {
             let stem = file_path.file_stem().unwrap().to_str().unwrap();
             let file = write_help!(&mut shared, "{stem}.{lang}");
             let parent = file_path.parent().unwrap();
-            fs::create_dir_all(parent)?;
-            let out = path_concat(parent, &mut shared, file, Some("json"));
-            fs::write(out, &shared_flex)?;
+            let path = path_concat(parent, &mut shared, file, Some("json"));
+            options.out.write(path, &shared_flex)?;
 
             wrote += shared_flex.len() as u64;
         }

@@ -22,6 +22,8 @@ use hash::MurmurHash;
 mod oodle;
 mod read;
 use read::ChunkReader;
+mod scoped_fs;
+use scoped_fs::ScopedFs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dictionary = fs::read_to_string("dictionary.txt");
@@ -69,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let options = ExtractOptions {
             target: path,
-            out: Path::new("./out"),
+            out: ScopedFs::new(Path::new("./out")),
             oodle: &oodle,
             dictionary: &dictionary,
             dictionary_short: &dictionary.iter().map(|(k, v)| (k.clone_short(), *v)).collect(),
@@ -207,7 +209,6 @@ fn extract_bundle(
 
     let mut count = 0;
     let mut files = bundle.files(options.oodle, bundle_buf);
-    fs::create_dir_all(options.out)?;
     while let Ok(Some(file)) = files.next_file().map_err(|e| panic!("{:016x} - {}", bundle_hash.unwrap_or(0), e)) {
         if let Some(filter_ext) = filter {
             let num_targets = num_targets.as_mut().unwrap();

@@ -78,17 +78,15 @@ impl Extractor for TextureParser {
 
             let meta_size = u16::try_from(rdr.read_u32::<LE>().unwrap()).unwrap();
 
+            let parent = file_path.parent().unwrap_or(Path::new("."));
             let file_name = file_path.file_stem().unwrap().to_str().unwrap();
-            let out_path = path_concat(options.out, &mut shared, file_name, Some("dds"));
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).unwrap();
-            }
+            let out_path = path_concat(parent, &mut shared, file_name, Some("dds"));
 
             let wrote = if meta_size == 0 {
                 let _unknown = rdr.read_u32::<LE>().unwrap();
                 assert!(rdr.read_u8().is_err());
 
-                fs::write(out_path, &out_buf).unwrap();
+                options.out.write(out_path, &out_buf)?;
                 out_buf.len() as u64
             } else {
                 assert!(has_high_res);
@@ -137,7 +135,7 @@ impl Extractor for TextureParser {
                 out_buf[28..32].copy_from_slice(&0_u32.to_le_bytes());
                 //out_buf[140..144].copy_from_slice(&0_u32.to_le_bytes());
 
-                let mut out_fd = File::create(out_path)?;
+                let mut out_fd = options.out.create(out_path)?;
                 out_fd.write_all(&out_buf[..148]).unwrap();
 
                 let mut wrote = 148;
@@ -209,7 +207,7 @@ impl Extractor for TextureParser {
             //for _ in 0..8 {
             //    rdr.read_u8().unwrap();
             //}
-            //let mut fd = File::create(file_path).unwrap();
+            //let mut fd = File::create(out_path).unwrap();
             //io::copy(rdr, &mut fd)
             Err(io::Error::new(io::ErrorKind::InvalidData, "unknown texture file kind"))
         } else {

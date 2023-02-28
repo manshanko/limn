@@ -7,7 +7,7 @@ impl Extractor for LuaParser {
         &self,
         mut entry: &mut Entry<'_, '_>,
         _file_path: &Path,
-        mut shared: &mut [u8],
+        shared: &mut [u8],
         shared_flex: &mut Vec<u8>,
         options: &ExtractOptions<'_>,
     ) -> io::Result<u64> {
@@ -34,7 +34,7 @@ impl Extractor for LuaParser {
         shared_flex.write_u8(b'@').unwrap();
 
         let slice;
-        (slice, shared) = shared.split_at_mut(len);
+        (slice, _) = shared.split_at_mut(len);
         for b in slice.iter_mut() {
             let c = entry.read_u8().unwrap();
             *b = c;
@@ -44,9 +44,7 @@ impl Extractor for LuaParser {
 
         io::copy(&mut entry, &mut *shared_flex).unwrap();
 
-        let path = path_concat(options.out, &mut shared, lua_path, None);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, &shared_flex).unwrap();
+        options.out.write(lua_path.as_ref(), &shared_flex)?;
 
         Ok(shared_flex.len() as u64)
     }

@@ -9,7 +9,7 @@ impl Extractor for BonesParser {
         file_path: &Path,
         mut shared: &mut [u8],
         mut shared_flex: &mut Vec<u8>,
-        _options: &ExtractOptions<'_>,
+        options: &ExtractOptions<'_>,
     ) -> io::Result<u64> {
         let variants = entry.variants();
         assert_eq!(1, variants.len());
@@ -52,10 +52,9 @@ impl Extractor for BonesParser {
         assert!(entry.read_u8().is_err());
 
         let parent = file_path.parent().unwrap();
-        let name = file_path.file_name().unwrap().to_str().unwrap();
-        let path = path_concat(parent, &mut shared, name, Some("json"));
-        fs::create_dir_all(parent).unwrap();
-        fs::write(path, &shared_flex).unwrap();
+        let stem = file_path.file_stem().unwrap().to_str().unwrap();
+        let path = path_concat(parent, &mut shared, stem, Some("bones.json"));
+        options.out.write(path, &shared_flex)?;
 
         Ok(shared_flex.len() as u64)
     }

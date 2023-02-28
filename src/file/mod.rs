@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -14,6 +13,7 @@ use crate::hash::FILE_EXTENSION;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use byteorder::LE;
+use crate::scoped_fs::ScopedFs;
 
 mod bones;
 mod lua;
@@ -42,7 +42,7 @@ trait Extractor {
 
 pub(crate) struct ExtractOptions<'a> {
     pub(crate) target: &'a Path,
-    pub(crate) out: &'a Path,
+    pub(crate) out: ScopedFs,
     pub(crate) oodle: &'a Oodle,
     pub(crate) dictionary: &'a HashMap<MurmurHash, &'a str>,
     pub(crate) dictionary_short: &'a HashMap<MurmurHash32, &'a str>,
@@ -84,12 +84,11 @@ pub(crate) fn extract(
     };
 
     if options.as_blob || extractor.is_none() {
-        let out = path_concat(options.out, &mut shared, file_name, Some(ext_name));
+        let out = path_concat(&Path::new("."), &mut shared, file_name, Some(ext_name));
 
         shared2.clear();
         shared2.reserve(0x1000);
 
-        fs::create_dir_all(out.parent().unwrap())?;
         shared2.write_u64::<LE>(entry.ext).unwrap();
         shared2.write_u64::<LE>(entry.name).unwrap();
         let variants = entry.variants();
@@ -103,11 +102,11 @@ pub(crate) fn extract(
             shared2.write_u32::<LE>(variant.tail_size).unwrap();
         }
 
-        let mut fd = fs::File::create(&out).unwrap();
+        let mut fd = options.out.create(out).unwrap();
         io::copy(&mut &shared2[..], &mut fd).unwrap();
         io::copy(&mut entry, &mut fd).map(|copied| copied + shared2.len() as u64)
     } else {
-        let out = path_concat(options.out, &mut shared, file_name, Some(ext_name));
+        let out = path_concat(&Path::new("."), &mut shared, file_name, Some(ext_name));
 
         let extractor = extractor.unwrap();
         extractor.extract(&mut entry, out, shared, shared2, options)
