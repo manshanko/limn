@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "limn"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "byteorder",
  "leb128",
@@ -42,8 +42,8 @@ dependencies = [
 
 [[package]]
 name = "steam_find"
-version = "0.1.0"
-source = "git+https://github.com/ManShanko/steam_find?rev=1c951920461a02eab72e2bb92512da541a716e75#1c951920461a02eab72e2bb92512da541a716e75"
+version = "0.1.1"
+source = "git+https://github.com/ManShanko/steam_find?rev=0e070bb1e1604588f2dc5d727b44719b188a67ad#0e070bb1e1604588f2dc5d727b44719b188a67ad"
 
 [[package]]
 name = "winapi"
