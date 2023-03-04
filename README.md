@@ -15,6 +15,11 @@ Extract only lua files:
 limn.exe "C:\Program Files (x86)\Steam\steamapps\common\Warhammer 40,000 Darktide\bundle" lua
 ```
 
+With the Steam version of Darktide automatic directory lookup is used when path is `-`:
+```
+limn.exe - lua
+```
+
 ## Dictionary
 
 If a file named `dictionary.txt` is placed next `limn.exe` it will be used for reverse hash lookup.
