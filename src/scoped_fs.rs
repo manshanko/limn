@@ -8,6 +8,7 @@ pub(crate) struct ScopedFs(PathBuf);
 
 impl ScopedFs {
     pub(crate) fn new(root: &Path) -> Self {
+        fs::create_dir_all(root).unwrap();
         Self(root.canonicalize().unwrap())
     }
 
