@@ -43,28 +43,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     args.next();
     let arg = args.next();
 
-    let mut darktide_path;
+    let darktide_path = steam_find::get_steam_app(1361210).map(|app| app.path);
+    let bundle_path;
     let path = if arg.as_ref().filter(|p| p == &"-").is_some() {
-        darktide_path = steam_find::get_steam_app(1361210)?.path;
-        darktide_path.push("bundle");
-        Some(darktide_path.as_ref())
+        match darktide_path {
+            Ok(ref path) => {
+                bundle_path = path.join("bundle");
+                Some(bundle_path.as_ref())
+            }
+            Err(e) => {
+                eprintln!("Darktide directory could not be found automatically");
+                eprintln!();
+                return Err(Box::new(e));
+            }
+        }
     } else {
         arg.as_ref().map(Path::new)
     };
+
     if let Some(path) = path {
         let oodle = match oodle::Oodle::load("oo2core_8_win64.dll") {
             Ok(oodle) => oodle,
             Err(e) => {
                 if let Some(oodle) = path.parent().map(|p| p.join("binaries/oo2core_8_win64.dll"))
                     .and_then(|p| oodle::Oodle::load(p).ok())
+                    .or_else(|| darktide_path.ok().map(|path| path.join("binaries/oo2core_8_win64.dll"))
+                        .and_then(|p| oodle::Oodle::load(p).ok()))
                 {
                     oodle
                 } else {
-                    eprintln!("{e:?}");
-                    eprintln!();
                     eprintln!("oo2core_8_win64.dll could not be loaded");
                     eprintln!("copy the dll from the Darktide binaries folder next to limn");
-                    return Ok(());
+                    eprintln!();
+                    return Err(Box::new(e));
                 }
             }
         };
