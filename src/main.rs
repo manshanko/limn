@@ -2,15 +2,16 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
-use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use std::thread;
+use std::time::Instant;
 use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::path::Path;
+use std::path::PathBuf;
 
 mod bundle;
 use bundle::BundleFd;
@@ -94,12 +95,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|a| a.to_str())
             .map(|s| hash::murmurhash64(s.as_bytes()));
 
-        let start = std::time::Instant::now();
+        let start = Instant::now();
         let num_files = if let Ok(read_dir) = fs::read_dir(path) {
-            let read_dir = read_dir.collect::<Vec<_>>();
-            let num_files = AtomicU32::new(0);
-            let count = AtomicUsize::new(0);
-            let file_i = AtomicUsize::new(0);
+            let mut bundles = Vec::new();
+            for fd in read_dir {
+                let fd = fd.as_ref().unwrap();
+                let meta = fd.metadata().unwrap();
+                if meta.is_file() {
+                    let path = fd.path();
+                    if path.extension().is_some() {
+                        continue;
+                    }
+
+                    if let Some(bundle_hash) = bundle_hash_from(&path) {
+                        bundles.push((path, bundle_hash));
+                    }
+                }
+            }
 
             let duplicates = Mutex::new(HashMap::with_capacity(0x10000));
             let num_threads = thread::available_parallelism()
@@ -107,47 +119,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or(0)
                 .saturating_sub(1)
                 .max(1);
-            thread::scope(|s| {
-                for _ in 0..num_threads {
-                    s.spawn(|| {
-                        let mut pool = Pool::new();
-                        let mut buffer_reader = vec![0_u8; 0x80000];
-                        let mut bundle_buf = Vec::new();
 
-                        while let Some(fd) = read_dir.get(file_i.fetch_add(1, Ordering::SeqCst)) {
-                            let fd = fd.as_ref().unwrap();
-                            let meta = fd.metadata().unwrap();
-                            let path = fd.path();
-                            let bundle_hash = bundle_hash_from(&path);
-                            if meta.is_file() && bundle_hash.is_some() && path.extension().is_none() {
-                                let bundle = File::open(&path).unwrap();
-                                let mut rdr = ChunkReader::new(&mut buffer_reader, bundle);
-                                let num = extract_bundle(
-                                    &mut pool,
-                                    &mut rdr,
-                                    &mut bundle_buf,
-                                    bundle_hash,
-                                    Some(&duplicates),
-                                    &options,
-                                    filter,
-                                ).unwrap();
-                                num_files.fetch_add(num, Ordering::SeqCst);
-                                let count = count.fetch_add(1, Ordering::SeqCst);
-                                if count > 0 && count % 10 == 0 {
-                                    println!("{count}");
-                                }
-                            }
-                        }
-                    });
-                }
-            });
-
-            let count = count.into_inner();
-            if count % 10 != 0 {
-                println!("{count}");
-            }
-
-            num_files.into_inner()
+            batch_threads(
+                num_threads,
+                &bundles,
+                &duplicates,
+                &options,
+                filter,
+            )
         } else if let Ok(bundle) = File::open(path) {
             let bundle_hash = bundle_hash_from(path);
             let mut buf = vec![0; 0x80000];
@@ -188,6 +167,87 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn batch_threads(
+    num_threads: usize,
+    bundles: &[(PathBuf, u64)],
+    duplicates: &Mutex<HashMap<(u64, u64), u64>>,
+    options: &ExtractOptions,
+    filter: Option<u64>,
+) -> u32 {
+    let bundle_index = AtomicUsize::new(0);
+
+    thread::scope(|s| {
+        let mut threads = Vec::with_capacity(num_threads);
+        for _ in 0..num_threads {
+            threads.push(s.spawn(|| thread_work(
+                &bundles,
+                &bundle_index,
+                &duplicates,
+                &options,
+                filter,
+            )));
+        }
+
+        let mut prev = (0, Instant::now());
+        loop {
+            thread::sleep(std::time::Duration::from_millis(1));
+
+            let is_finished = threads.iter().all(|t| t.is_finished());
+            if is_finished {
+                if prev.0 != bundles.len() {
+                    println!("{}", bundles.len());
+                }
+                break;
+            } else if prev.1.elapsed().as_millis() > 50 {
+                let count = bundle_index.load(Ordering::Relaxed).min(bundles.len());
+                if count == prev.0 {
+                    continue;
+                }
+
+                println!("{count}");
+                prev = (count, Instant::now());
+            }
+        }
+
+        let mut num_files = 0;
+        for thread in threads {
+            num_files += thread.join().unwrap();
+        }
+        num_files
+    })
+}
+
+fn thread_work(
+    bundles: &[(PathBuf, u64)],
+    bundle_index: &AtomicUsize,
+    duplicates: &Mutex<HashMap<(u64, u64), u64>>,
+    options: &ExtractOptions,
+    filter: Option<u64>,
+) -> u32 {
+    let mut pool = Pool::new();
+    let mut buffer_reader = vec![0_u8; 0x80000];
+    let mut bundle_buf = Vec::new();
+    let mut num_files = 0;
+
+    while let Some((path, bundle_hash)) =
+        bundles.get(bundle_index.fetch_add(1, Ordering::Relaxed))
+    {
+        let bundle = File::open(&path).unwrap();
+        let mut rdr = ChunkReader::new(&mut buffer_reader, bundle);
+        num_files += extract_bundle(
+            &mut pool,
+            &mut rdr,
+            &mut bundle_buf,
+            Some(*bundle_hash),
+            Some(&duplicates),
+            &options,
+            filter,
+        ).unwrap();
+    }
+
+    num_files
 }
 
 fn extract_bundle(
