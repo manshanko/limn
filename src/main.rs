@@ -200,16 +200,19 @@ fn extract_bundle(
     bundle_buf.clear();
     let mut bundle = BundleFd::new(bundle_hash, &mut rdr)?;
     let mut num_targets = if let Some(filter_ext) = filter {
-        let mut pass = false;
         let mut count = 0;
         for file in bundle.index() {
             if file.ext == filter_ext {
-                pass = true;
+                if options.skip_unknown
+                    && !options.dictionary.contains_key(&MurmurHash::from(file.name))
+                {
+                    continue;
+                }
                 count += 1;
             }
         }
 
-        if !pass {
+        if count == 0 {
             return Ok(0);
         } else {
             Some(count)
@@ -221,27 +224,25 @@ fn extract_bundle(
     let mut count = 0;
     let mut files = bundle.files(options.oodle, bundle_buf);
     while let Ok(Some(file)) = files.next_file().map_err(|e| panic!("{:016x} - {}", bundle_hash.unwrap_or(0), e)) {
+        if options.skip_unknown
+            && file.ext != /*lua*/0xa14e8dfa2cd117e2
+            && !(filter == Some(file.ext) && file.ext == /*strings*/0x0d972bab10b40fd3)
+            && !options.dictionary.contains_key(&MurmurHash::from(file.name))
+        {
+            continue;
+        }
+
         if let Some(filter_ext) = filter {
             let num_targets = num_targets.as_mut().unwrap();
+            if *num_targets == 0 {
+                break;
+            }
+
             if file.ext != filter_ext {
-                if *num_targets > 0 {
-                    continue;
-                } else {
-                    break;
-                }
+                continue;
             } else {
                 *num_targets -= 1;
             }
-        }
-
-        let in_dictionary = options.dictionary.get(&MurmurHash::from(file.name)).is_some();
-
-        if options.skip_unknown
-            && !in_dictionary
-            && file.ext != /*lua*/0xa14e8dfa2cd117e2
-            && !(filter == Some(file.ext) && file.ext == /*strings*/0x0d972bab10b40fd3)
-        {
-            continue;
         }
 
         if let Some(duplicates) = duplicates {
@@ -268,26 +269,3 @@ fn bundle_hash_from(path: &Path) -> Option<u64> {
     let name = path.file_stem()?;
     u64::from_str_radix(name.to_str()?, 16).ok()
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
