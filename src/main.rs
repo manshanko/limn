@@ -164,9 +164,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             panic!("PATH argument was invalid");
         };
+
+        let ms = start.elapsed().as_millis();
         println!();
         println!("DONE");
-        println!("took {}ms", start.elapsed().as_millis());
+        println!("took {}.{}s", ms / 1000, ms % 1000);
         println!("extracted {num_files} files");
     } else {
         println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
