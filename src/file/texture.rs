@@ -27,16 +27,19 @@ impl Extractor for TextureParser {
         let variants = entry.variants();
         assert_eq!(1, variants.len());
         let prime = &variants[0];
+        let body_size = prime.body_size;
+        let tail_size = prime.tail_size;
+        assert!(tail_size <= 31);
 
-        let has_high_res = prime.unknown1 == 0 && prime.tail_size > 0;
+        let has_high_res = prime.unknown1 == 0 && tail_size > 0;
         let unknown1 = prime.unknown1;
         let mut either_rdr = match unknown1 {
             0 => Ok(entry),
             1 => {
-                assert_eq!(0, prime.tail_size);
+                assert_eq!(0, tail_size);
 
                 let mut data_path = [0_u8; 31];
-                entry.read(&mut data_path).unwrap();
+                entry.read(&mut data_path[..body_size as usize]).unwrap();
                 let file = data_path_from_buffer(shared, options.target, &data_path).unwrap();
                 let slice;
                 (slice, shared) = shared.split_at_mut(0x10000);
@@ -109,7 +112,7 @@ impl Extractor for TextureParser {
                 let _unknown = rdr.read_u32::<LE>().unwrap();
 
                 let mut data_path = [0; 31];
-                rdr.read_exact(&mut data_path).unwrap();
+                rdr.read_exact(&mut data_path[..tail_size as usize]).unwrap();
                 assert!(rdr.read_u8().is_err());
 
                 let base_width = u32::from_le_bytes(<[u8; 4]>::try_from(&out_buf[16..20]).unwrap());
@@ -185,8 +188,9 @@ impl Extractor for TextureParser {
 fn data_path_from_buffer(
     mut shared: &mut [u8],
     target: &Path,
-    path: &[u8; 31],
+    path: &[u8],
 ) -> io::Result<File> {
+    let path = path.split(|b| *b == 0).next().unwrap();
     let path = data_path_from(&*path).unwrap();
     let path = path_concat(target, &mut shared, path, None);
     assert!(path.starts_with(target));
