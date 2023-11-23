@@ -4,16 +4,37 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub(crate) struct ScopedFs(PathBuf);
+pub(crate) struct ScopedFs {
+    root: PathBuf,
+    is_null: bool,
+}
 
 impl ScopedFs {
+    fn new_(root: &Path, is_null: bool) -> Self {
+        let root = if is_null {
+            root.to_path_buf()
+        } else {
+            fs::create_dir_all(root).unwrap();
+            root.canonicalize().unwrap()
+        };
+
+        Self {
+            root,
+            is_null,
+        }
+    }
+
     pub(crate) fn new(root: &Path) -> Self {
-        fs::create_dir_all(root).unwrap();
-        Self(root.canonicalize().unwrap())
+        Self::new_(root, false)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn new_null(root: &Path) -> Self {
+        Self::new_(root, true)
     }
 
     fn format_path(&self, path: &Path) -> io::Result<PathBuf> {
-        let out = self.0.join(path);
+        let out = self.root.join(path);
         for part in out.components() {
             match part {
                 //Component::RootDir => return false,
@@ -21,21 +42,53 @@ impl ScopedFs {
                 _ => (),
             }
         }
-        assert!(out.starts_with(&self.0));
-        if let Some(parent) = out.parent() {
-            fs::create_dir_all(parent)?;
+        assert!(out.starts_with(&self.root));
+        if !self.is_null {
+            if let Some(parent) = out.parent() {
+                fs::create_dir_all(parent)?;
+            }
         }
         Ok(out)
     }
 
     pub(crate) fn write(&self, path: &Path, data: &[u8]) -> io::Result<()> {
-        let path = self.format_path(path)?;
-        fs::write(path, data)
+        if self.is_null {
+            Ok(())
+        } else {
+            let path = self.format_path(path)?;
+            fs::write(path, data)
+        }
     }
 
-    pub(crate) fn create(&self, path: &Path) -> io::Result<fs::File> {
-        let path = self.format_path(path)?;
-        fs::File::create(path)
+    pub(crate) fn create(&self, path: &Path) -> io::Result<impl io::Write> {
+        if self.is_null {
+            Ok(ScopedFd(None))
+        } else {
+            let path = self.format_path(path)?;
+            Ok(ScopedFd(Some(fs::File::create(path)?)))
+        }
+    }
+}
+
+pub(crate) struct ScopedFd(Option<fs::File>);
+
+impl io::Write for ScopedFd {
+    #[inline]
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        if let Some(fd) = self.0.as_mut() {
+            fd.write(data)
+        } else {
+            Ok(data.len())
+        }
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        if let Some(fd) = self.0.as_mut() {
+            fd.flush()
+        } else {
+            Ok(())
+        }
     }
 }
 

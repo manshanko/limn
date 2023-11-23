@@ -233,7 +233,7 @@ fn sort_write_texture_chunks(
     chunk_width_pixel: u32,
     block_size: u32,
     pitch: u32,
-    out_fd: &mut File,
+    out_fd: &mut impl io::Write,
 ) -> u64 {
     let window_size = (pitch * 64) as usize;
     let ([in_buf, out_buf, scratch, window], _) = split_vec(memory_pool,
