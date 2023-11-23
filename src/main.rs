@@ -10,6 +10,7 @@ use std::time::Instant;
 use std::io;
 use std::io::Read;
 use std::io::Seek;
+use std::panic;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -131,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let bundle_hash = bundle_hash_from(path);
             let mut buf = vec![0; 0x80000];
             let mut rdr = ChunkReader::new(&mut buf, bundle);
-            extract_bundle(
+            Some(extract_bundle(
                 &mut Pool::new(),
                 &mut rdr,
                 &mut Vec::new(),
@@ -139,16 +140,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None,
                 &options,
                 filter,
-            )?
+            ).unwrap())
         } else {
             panic!("PATH argument was invalid");
         };
 
-        let ms = start.elapsed().as_millis();
         println!();
-        println!("DONE");
-        println!("took {}.{}s", ms / 1000, ms % 1000);
-        println!("extracted {num_files} files");
+        if let Some(num_files) = num_files {
+            let ms = start.elapsed().as_millis();
+            println!("DONE");
+            println!("took {}.{}s", ms / 1000, ms % 1000);
+            println!("extracted {num_files} files");
+        } else {
+            // TODO app exit code
+            println!("did not finish due to errors");
+        }
     } else {
         println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
         println!("{}", env!("CARGO_PKG_REPOSITORY"));
@@ -175,19 +181,43 @@ fn batch_threads(
     duplicates: &Mutex<HashMap<(u64, u64), u64>>,
     options: &ExtractOptions,
     filter: Option<u64>,
-) -> u32 {
-    let bundle_index = AtomicUsize::new(0);
+) -> Option<u32> {
+    static BUNDLE_INDEX: AtomicUsize = AtomicUsize::new(0);
+    static THREAD_ERRORS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+    BUNDLE_INDEX.store(0, Ordering::Release);
+
+    let total = bundles.len();
+    panic::set_hook(Box::new(move |p| {
+        let location = p.location().map(|l| l.to_string()).unwrap_or(String::new());
+        let payload = if let Some(s) = p.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = p.payload().downcast_ref::<String>() {
+            s.to_string()
+        } else {
+            String::new()
+        };
+
+        let mut thread_errors = THREAD_ERRORS.lock().unwrap();
+        if thread_errors.is_empty() {
+            eprintln!("thread panic");
+            BUNDLE_INDEX.store(total + num_threads, Ordering::Release);
+            thread_errors.reserve(num_threads);
+        }
+        thread_errors.push((location, payload));
+    }));
 
     thread::scope(|s| {
         let mut threads = Vec::with_capacity(num_threads);
         for _ in 0..num_threads {
-            threads.push(s.spawn(|| thread_work(
-                &bundles,
-                &bundle_index,
-                &duplicates,
-                &options,
-                filter,
-            )));
+            threads.push(s.spawn(|| {
+                panic::catch_unwind(|| thread_work(
+                    &bundles,
+                    &BUNDLE_INDEX,
+                    &duplicates,
+                    &options,
+                    filter,
+                ))
+            }));
         }
 
         let mut prev = (0, Instant::now());
@@ -196,26 +226,65 @@ fn batch_threads(
 
             let is_finished = threads.iter().all(|t| t.is_finished());
             if is_finished {
-                if prev.0 != bundles.len() {
+                if prev.0 < bundles.len()
+                    && THREAD_ERRORS.lock().unwrap().is_empty()
+                {
                     println!("{}", bundles.len());
                 }
                 break;
             } else if prev.1.elapsed().as_millis() > 50 {
-                let count = bundle_index.load(Ordering::Relaxed).min(bundles.len());
+                let count = BUNDLE_INDEX.load(Ordering::Acquire)
+                    .saturating_sub(num_threads);
                 if count == prev.0 {
                     continue;
                 }
 
-                println!("{count}");
+                if count < total {
+                    println!("{count}");
+                }
                 prev = (count, Instant::now());
             }
         }
 
-        let mut num_files = 0;
-        for thread in threads {
-            num_files += thread.join().unwrap();
+        let threads = threads.into_iter().map(|t| t.join().unwrap()).collect::<Vec<_>>();
+        let _ = panic::take_hook();
+
+        if threads.iter().all(|t| t.is_ok()) {
+            let mut num_files = 0;
+            for thread in threads {
+                num_files += thread.unwrap();
+            }
+            Some(num_files)
+        } else {
+            let thread_errors = THREAD_ERRORS.lock().unwrap();
+            if thread_errors.is_empty() {
+                eprintln!("unknown thread panic");
+            } else {
+                let mut same = true;
+                let first = &thread_errors[0].0;
+                for (next, _) in &thread_errors[1..] {
+                    if first != next {
+                        same = false;
+                        break;
+                    }
+                }
+
+                eprintln!();
+                if same {
+                    eprintln!("  {first}");
+                    for (_, error) in thread_errors.iter() {
+                        eprintln!("{error}");
+                    }
+                } else {
+                    eprintln!("  panics:");
+                    for (location, error) in thread_errors.iter() {
+                        eprintln!("{location}");
+                        eprintln!("{error}");
+                    }
+                }
+            }
+            None
         }
-        num_files
     })
 }
 
@@ -232,7 +301,7 @@ fn thread_work(
     let mut num_files = 0;
 
     while let Some((path, bundle_hash)) =
-        bundles.get(bundle_index.fetch_add(1, Ordering::Relaxed))
+        bundles.get(bundle_index.fetch_add(1, Ordering::AcqRel))
     {
         let bundle = File::open(&path).unwrap();
         let mut rdr = ChunkReader::new(&mut buffer_reader, bundle);
