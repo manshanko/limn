@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "byteorder"
-version = "1.4.3"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "cfg-if"
@@ -22,9 +22,9 @@ checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
 name = "libloading"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efbc0f03f9a775e9f6aed295c6a1ba2253c5757a9e03d55c6caa46a681abcddd"
+checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
 dependencies = [
  "cfg-if",
  "winapi",
@@ -32,7 +32,7 @@ dependencies = [
 
 [[package]]
 name = "limn"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "byteorder",
  "leb128",
@@ -42,8 +42,8 @@ dependencies = [
 
 [[package]]
 name = "steam_find"
-version = "0.1.1"
-source = "git+https://github.com/ManShanko/steam_find?rev=0e070bb1e1604588f2dc5d727b44719b188a67ad#0e070bb1e1604588f2dc5d727b44719b188a67ad"
+version = "0.1.2"
+source = "git+https://github.com/ManShanko/steam_find?rev=c7ab9376cd18a4e02a84e61aac92ca9ec70c7031#c7ab9376cd18a4e02a84e61aac92ca9ec70c7031"
 
 [[package]]
 name = "winapi"
