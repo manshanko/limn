@@ -261,6 +261,11 @@ fn batch_threads(
             let thread_errors = THREAD_ERRORS.lock().unwrap();
             if thread_errors.is_empty() {
                 eprintln!("unknown thread panic");
+            } else if thread_errors.len() == 1 {
+                let (location, error) = &thread_errors[0];
+                eprintln!();
+                eprintln!("{location}");
+                eprintln!("{error}");
             } else {
                 let mut same = true;
                 let first = &thread_errors[0].0;
