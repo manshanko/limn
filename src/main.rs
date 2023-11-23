@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
@@ -184,29 +185,31 @@ fn batch_threads(
     options: &ExtractOptions,
     filter: Option<u64>,
 ) -> Option<u32> {
-    static BUNDLE_INDEX: AtomicUsize = AtomicUsize::new(0);
-    static THREAD_ERRORS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
-    BUNDLE_INDEX.store(0, Ordering::Release);
+    let bundle_index = Arc::new(AtomicUsize::new(0));
+    let thread_errors = Arc::new(Mutex::new(Vec::with_capacity(num_threads)));
 
     let total = bundles.len();
-    panic::set_hook(Box::new(move |p| {
-        let location = p.location().map(|l| l.to_string()).unwrap_or(String::new());
-        let payload = if let Some(s) = p.payload().downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = p.payload().downcast_ref::<String>() {
-            s.to_string()
-        } else {
-            String::new()
-        };
+    {
+        let bundle_index = bundle_index.clone();
+        let thread_errors = thread_errors.clone();
+        panic::set_hook(Box::new(move |p| {
+            let location = p.location().map(|l| l.to_string()).unwrap_or(String::new());
+            let payload = if let Some(s) = p.payload().downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = p.payload().downcast_ref::<String>() {
+                s.to_string()
+            } else {
+                String::new()
+            };
 
-        let mut thread_errors = THREAD_ERRORS.lock().unwrap();
-        if thread_errors.is_empty() {
-            eprintln!("thread panic");
-            BUNDLE_INDEX.store(total + num_threads, Ordering::Release);
-            thread_errors.reserve(num_threads);
-        }
-        thread_errors.push((location, payload));
-    }));
+            let mut thread_errors = thread_errors.lock().unwrap();
+            if thread_errors.is_empty() {
+                eprintln!("thread panic");
+                bundle_index.store(total + num_threads, Ordering::Release);
+            }
+            thread_errors.push((location, payload));
+        }));
+    }
 
     thread::scope(|s| {
         let mut threads = Vec::with_capacity(num_threads);
@@ -214,7 +217,7 @@ fn batch_threads(
             threads.push(s.spawn(|| {
                 panic::catch_unwind(|| thread_work(
                     &bundles,
-                    &BUNDLE_INDEX,
+                    &bundle_index,
                     &duplicates,
                     &options,
                     filter,
@@ -229,13 +232,13 @@ fn batch_threads(
             let is_finished = threads.iter().all(|t| t.is_finished());
             if is_finished {
                 if prev.0 < bundles.len()
-                    && THREAD_ERRORS.lock().unwrap().is_empty()
+                    && thread_errors.lock().unwrap().is_empty()
                 {
                     println!("{}", bundles.len());
                 }
                 break;
             } else if prev.1.elapsed().as_millis() > 50 {
-                let count = BUNDLE_INDEX.load(Ordering::Acquire)
+                let count = bundle_index.load(Ordering::Acquire)
                     .saturating_sub(num_threads);
                 if count == prev.0 {
                     continue;
@@ -258,7 +261,7 @@ fn batch_threads(
             }
             Some(num_files)
         } else {
-            let thread_errors = THREAD_ERRORS.lock().unwrap();
+            let thread_errors = thread_errors.lock().unwrap();
             if thread_errors.is_empty() {
                 eprintln!("unknown thread panic");
             } else if thread_errors.len() == 1 {
