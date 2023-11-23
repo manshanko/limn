@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        let options = ExtractOptions {
+        let mut options = ExtractOptions {
             target: path,
             out: ScopedFs::new(Path::new("./out")),
             oodle: &oodle,
@@ -129,6 +129,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 filter,
             )
         } else if let Ok(bundle) = File::open(path) {
+            options.target = path.parent().unwrap();
+
             let bundle_hash = bundle_hash_from(path);
             let mut buf = vec![0; 0x80000];
             let mut rdr = ChunkReader::new(&mut buf, bundle);
