@@ -196,9 +196,7 @@ fn data_path_from_buffer(
     assert!(path.starts_with(target));
     let Ok(fd) = File::open(path) else {
         if cfg!(debug_assertions) {
-            panic!("failed to load resource file at {}", path.display());
-        } else {
-            eprintln!("failed to load resource file at {}", path.display());
+            panic!("failed to load {}", path.display());
         }
         return Err(io::Error::new(io::ErrorKind::NotFound,
             "failed to find texture resource file under data/*/*"));
