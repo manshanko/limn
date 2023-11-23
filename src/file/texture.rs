@@ -136,11 +136,6 @@ impl Extractor for TextureParser {
                 out_buf[28..32].copy_from_slice(&0_u32.to_le_bytes());
                 //out_buf[140..144].copy_from_slice(&0_u32.to_le_bytes());
 
-                let mut out_fd = options.out.create(out_path)?;
-                out_fd.write_all(&out_buf[..148]).unwrap();
-
-                let mut wrote = 148;
-
                 let chunk_width_pixel = if block_size == 8 {
                     128
                 } else if block_size == 16 {
@@ -158,7 +153,9 @@ impl Extractor for TextureParser {
                 (slice, _) = shared.split_at_mut(0x10000);
                 let mut data_rdr = ChunkReader::new(slice, data_fd);
 
-                wrote += sort_write_texture_chunks(
+                let mut out_fd = options.out.create(out_path)?;
+                out_fd.write_all(&out_buf[..148]).unwrap();
+                148 + sort_write_texture_chunks(
                     memory_pool,
                     &options.oodle,
                     &mut data_rdr,
@@ -168,8 +165,7 @@ impl Extractor for TextureParser {
                     block_size,
                     pitch,
                     &mut out_fd,
-                );
-                wrote as u64
+                )
             };
             Ok(wrote)
         } else if kind == 0 {
