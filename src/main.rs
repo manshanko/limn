@@ -65,21 +65,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     if let Some(path) = path {
-        let oodle = match oodle::Oodle::load("oo2core_8_win64.dll") {
+        let oodle = match load_oodle("oo2core_9_win64.dll", &path, darktide_path.as_ref().ok())
+            .or_else(|_| load_oodle("oo2core_8_win64.dll", &path, darktide_path.as_ref().ok()))
+        {
             Ok(oodle) => oodle,
             Err(e) => {
-                if let Some(oodle) = path.parent().map(|p| p.join("binaries/oo2core_8_win64.dll"))
-                    .and_then(|p| oodle::Oodle::load(p).ok())
-                    .or_else(|| darktide_path.ok().map(|path| path.join("binaries/oo2core_8_win64.dll"))
-                        .and_then(|p| oodle::Oodle::load(p).ok()))
-                {
-                    oodle
-                } else {
-                    eprintln!("oo2core_8_win64.dll could not be loaded");
-                    eprintln!("copy the dll from the Darktide binaries folder next to limn");
-                    eprintln!();
-                    return Err(Box::new(e));
-                }
+                eprintln!("oo2core_9_win64.dll could not be loaded");
+                eprintln!("copy the dll from the Darktide binaries folder next to limn");
+                eprintln!();
+                return Err(Box::new(e));
             }
         };
 
@@ -409,4 +403,26 @@ fn extract_bundle(
 fn bundle_hash_from(path: &Path) -> Option<u64> {
     let name = path.file_stem()?;
     u64::from_str_radix(name.to_str()?, 16).ok()
+}
+
+fn load_oodle(
+    name: &str,
+    path: &Path,
+    darktide_path: Option<&PathBuf>,
+) -> Result<oodle::Oodle, io::Error> {
+    match oodle::Oodle::load(path) {
+        Ok(out) => Ok(out),
+        Err(e) => {
+            let oodle_path = format!("binaries/{name}");
+            if let Some(oodle) = path.parent().map(|p| p.join(&oodle_path))
+                .and_then(|p| oodle::Oodle::load(p).ok())
+                .or_else(|| darktide_path.map(|path| path.join(&oodle_path))
+                    .and_then(|p| oodle::Oodle::load(p).ok()))
+            {
+                Ok(oodle)
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
