@@ -34,15 +34,19 @@ fn print_help() {
     println!();
     println!("limn extracts files from resource bundles used in Darktide.");
     println!();
-    println!("limn uses oo2core_8_win64.dll to decompress the bundle. If it fails to load");
-    println!("oo2core_8_win64.dll then copy it from the Darktide binaries folder next to limn.");
+    println!("limn uses oo2core_9_win64.dll to decompress the bundle. If it fails to load");
+    println!("oo2core_9_win64.dll then copy it from the Darktide binaries folder next to limn.");
     println!();
     println!("USAGE:");
-    println!("limn.exe <PATH> <FILTER>");
+    println!("limn.exe [OPTIONS] <FILTER>");
     println!();
     println!("ARGS:");
-    println!("    <PATH>    A bundle or directory of bundles to extract.");
-    println!("    <FILTER>  If present only extract files with this extension.");
+    println!("    <FILTER>  Extract files with matching extension. Supports \"*\" as a wildcard.");
+    println!();
+    println!("OPTIONS:");
+    println!("        --dump-raw            Extract files without converting contents.");
+    println!("    -i, --input               Bundle or directory of bundles to extract.");
+    println!("    -f, --filter <FILTER>     Only extract files with matching extension.");
 }
 
 struct Args {
