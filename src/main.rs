@@ -45,7 +45,99 @@ fn print_help() {
     println!("    <FILTER>  If present only extract files with this extension.");
 }
 
+struct Args {
+    // always dump files raw instead of using crate::file::Extractor
+    dump_raw: bool,
+
+    // path to bundle OR directory of bundles
+    target: PathBuf,
+
+    filter_ext: Option<u64>,
+
+    darktide_path: Option<PathBuf>,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
+    use lexopt::prelude::*;
+
+    let mut dump_raw = false;
+
+    let mut target = None;
+    let mut filter_ext = None;
+
+    let mut num_args = 0;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        num_args += 1;
+        match &arg {
+            Long("dump-raw") => dump_raw = true,
+            Short('i') | Long("input") => target = Some(PathBuf::from(parser.value()?)),
+            Long("help") => {
+                print_help();
+                std::process::exit(0);
+            }
+
+            Short('f') | Long("filter") => {
+                let val = &*parser.value()?;
+                let s = val.to_str()
+                    .ok_or("extension filter must be valid UTF-8")?;
+                let h = match s {
+                    "*" => None,
+                    _ => Some(hash::murmur_hash64a(s.as_bytes(), 0)),
+                };
+                filter_ext = Some(h);
+            }
+            Value(val) => {
+                if filter_ext.is_some() {
+                    return Err(arg.unexpected());
+                }
+
+                let s = val.to_str()
+                    .ok_or("extension filter must be valid UTF-8")?;
+                let h = match s {
+                    "*" => None,
+                    _ => Some(hash::murmur_hash64a(s.as_bytes(), 0)),
+                };
+                filter_ext = Some(h);
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+
+    if num_args == 0 {
+        print_help();
+        std::process::exit(0);
+    }
+
+    let darktide_path = steam_find::get_steam_app(1361210).map(|app| app.path);
+    let target = target.unwrap_or_else(|| {
+        match &darktide_path {
+            Ok(path) => path.join("bundle"),
+            Err(e) => {
+                eprintln!("Darktide steam installation was not found:\n{e:?}");
+                std::process::exit(1);
+            }
+        }
+    });
+
+    Ok(Args {
+        dump_raw,
+
+        target,
+        filter_ext: filter_ext.flatten(),
+        darktide_path: darktide_path.ok(),
+    })
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let Args {
+        dump_raw,
+
+        target,
+        filter_ext,
+        darktide_path,
+    } = parse_args()?;
+
     let dictionary = fs::read_to_string("dictionary.txt");
     let (dictionary, skip_unknown) = if let Ok(data) = dictionary.as_ref() {
         let mut dict = HashMap::with_capacity(0x1000);
@@ -59,31 +151,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (HashMap::new(), false)
     };
 
-    let mut args = std::env::args_os();
-    args.next();
-    let arg = args.next();
-
-    let darktide_path = steam_find::get_steam_app(1361210).map(|app| app.path);
-    let bundle_path;
-    let path = if arg.as_ref().filter(|p| p == &"-").is_some() {
-        match darktide_path {
-            Ok(ref path) => {
-                bundle_path = path.join("bundle");
-                Some(bundle_path.as_ref())
-            }
-            Err(e) => {
-                eprintln!("Darktide directory could not be found automatically");
-                eprintln!();
-                return Err(Box::new(e));
-            }
-        }
-    } else {
-        arg.as_ref().map(Path::new)
-    };
-
-    if let Some(path) = path {
-        let oodle = match load_oodle("oo2core_9_win64.dll", &path, darktide_path.as_ref().ok())
-            .or_else(|_| load_oodle("oo2core_8_win64.dll", &path, darktide_path.as_ref().ok()))
+    if true {
+        let oodle = match load_oodle("oo2core_9_win64.dll", &target, darktide_path.as_ref())
+            .or_else(|_| load_oodle("oo2core_8_win64.dll", &target, darktide_path.as_ref()))
         {
             Ok(oodle) => oodle,
             Err(e) => {
@@ -95,21 +165,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let mut options = ExtractOptions {
-            target: path,
+            target: &target,
             out: ScopedFs::new(Path::new("./out")),
             oodle: &oodle,
             dictionary: &dictionary,
             dictionary_short: &dictionary.iter().map(|(k, v)| (k.clone_short(), *v)).collect(),
             skip_unknown,
-            as_blob: false,
+            as_blob: dump_raw,
         };
 
-        let filter = args.next().as_ref()
-            .and_then(|a| a.to_str())
-            .map(|s| hash::murmurhash64(s.as_bytes()));
-
         let start = Instant::now();
-        let num_files = if let Ok(read_dir) = fs::read_dir(path) {
+        let num_files = if let Ok(read_dir) = fs::read_dir(&target) {
             let mut bundles = Vec::new();
             for fd in read_dir {
                 let fd = fd.as_ref().unwrap();
@@ -138,12 +204,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &bundles,
                 &duplicates,
                 &options,
-                filter,
+                filter_ext,
             )
-        } else if let Ok(bundle) = File::open(path) {
-            options.target = path.parent().unwrap();
+        } else if let Ok(bundle) = File::open(&target) {
+            options.target = target.parent().unwrap();
 
-            let bundle_hash = bundle_hash_from(path);
+            let bundle_hash = bundle_hash_from(&target);
             let mut buf = vec![0; 0x80000];
             let mut rdr = ChunkReader::new(&mut buf, bundle);
             Some(extract_bundle(
@@ -153,7 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 bundle_hash,
                 None,
                 &options,
-                filter,
+                filter_ext,
             ).unwrap())
         } else {
             panic!("PATH argument was invalid");
@@ -169,8 +235,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // TODO app exit code
             println!("did not finish due to errors");
         }
-    } else {
-        print_help();
     }
 
     Ok(())

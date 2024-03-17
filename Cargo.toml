@@ -14,3 +14,4 @@ steam_find = { git = "https://github.com/ManShanko/steam_find", rev = "c7ab9376c
 byteorder = "1.4.3"
 leb128 = "0.2.5"
 libloading = "0.7.3"
+lexopt = "0.3.0"
