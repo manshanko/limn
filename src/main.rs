@@ -28,6 +28,23 @@ use read::ChunkReader;
 mod scoped_fs;
 use scoped_fs::ScopedFs;
 
+fn print_help() {
+    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    println!("{}", env!("CARGO_PKG_REPOSITORY"));
+    println!();
+    println!("limn extracts files from resource bundles used in Darktide.");
+    println!();
+    println!("limn uses oo2core_8_win64.dll to decompress the bundle. If it fails to load");
+    println!("oo2core_8_win64.dll then copy it from the Darktide binaries folder next to limn.");
+    println!();
+    println!("USAGE:");
+    println!("limn.exe <PATH> <FILTER>");
+    println!();
+    println!("ARGS:");
+    println!("    <PATH>    A bundle or directory of bundles to extract.");
+    println!("    <FILTER>  If present only extract files with this extension.");
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dictionary = fs::read_to_string("dictionary.txt");
     let (dictionary, skip_unknown) = if let Ok(data) = dictionary.as_ref() {
@@ -153,20 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("did not finish due to errors");
         }
     } else {
-        println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-        println!("{}", env!("CARGO_PKG_REPOSITORY"));
-        println!();
-        println!("limn extracts files from resource bundles used in Darktide.");
-        println!();
-        println!("limn uses oo2core_8_win64.dll to decompress the bundle. If it fails to load");
-        println!("oo2core_8_win64.dll then copy it from the Darktide binaries folder next to limn.");
-        println!();
-        println!("USAGE:");
-        println!("limn.exe <PATH> <FILTER>");
-        println!();
-        println!("ARGS:");
-        println!("    <PATH>    A bundle or directory of bundles to extract.");
-        println!("    <FILTER>  If present only extract files with this extension.");
+        print_help();
     }
 
     Ok(())
