@@ -151,90 +151,88 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (HashMap::new(), false)
     };
 
-    if true {
-        let oodle = match load_oodle("oo2core_9_win64.dll", &target, darktide_path.as_ref())
-            .or_else(|_| load_oodle("oo2core_8_win64.dll", &target, darktide_path.as_ref()))
-        {
-            Ok(oodle) => oodle,
-            Err(e) => {
-                eprintln!("oo2core_9_win64.dll could not be loaded");
-                eprintln!("copy the dll from the Darktide binaries folder next to limn");
-                eprintln!();
-                return Err(Box::new(e));
-            }
-        };
+    let oodle = match load_oodle("oo2core_9_win64.dll", &target, darktide_path.as_ref())
+        .or_else(|_| load_oodle("oo2core_8_win64.dll", &target, darktide_path.as_ref()))
+    {
+        Ok(oodle) => oodle,
+        Err(e) => {
+            eprintln!("oo2core_9_win64.dll could not be loaded");
+            eprintln!("copy the dll from the Darktide binaries folder next to limn");
+            eprintln!();
+            return Err(Box::new(e));
+        }
+    };
 
-        let mut options = ExtractOptions {
-            target: &target,
-            out: ScopedFs::new(Path::new("./out")),
-            oodle: &oodle,
-            dictionary: &dictionary,
-            dictionary_short: &dictionary.iter().map(|(k, v)| (k.clone_short(), *v)).collect(),
-            skip_unknown,
-            as_blob: dump_raw,
-        };
+    let mut options = ExtractOptions {
+        target: &target,
+        out: ScopedFs::new(Path::new("./out")),
+        oodle: &oodle,
+        dictionary: &dictionary,
+        dictionary_short: &dictionary.iter().map(|(k, v)| (k.clone_short(), *v)).collect(),
+        skip_unknown,
+        as_blob: dump_raw,
+    };
 
-        let start = Instant::now();
-        let num_files = if let Ok(read_dir) = fs::read_dir(&target) {
-            let mut bundles = Vec::new();
-            for fd in read_dir {
-                let fd = fd.as_ref().unwrap();
-                let meta = fd.metadata().unwrap();
-                if meta.is_file() {
-                    let path = fd.path();
-                    if path.extension().is_some() {
-                        continue;
-                    }
+    let start = Instant::now();
+    let num_files = if let Ok(read_dir) = fs::read_dir(&target) {
+        let mut bundles = Vec::new();
+        for fd in read_dir {
+            let fd = fd.as_ref().unwrap();
+            let meta = fd.metadata().unwrap();
+            if meta.is_file() {
+                let path = fd.path();
+                if path.extension().is_some() {
+                    continue;
+                }
 
-                    if let Some(bundle_hash) = bundle_hash_from(&path) {
-                        bundles.push((path, bundle_hash));
-                    }
+                if let Some(bundle_hash) = bundle_hash_from(&path) {
+                    bundles.push((path, bundle_hash));
                 }
             }
-
-            let duplicates = Mutex::new(HashMap::with_capacity(0x10000));
-            let num_threads = thread::available_parallelism()
-                .map(|i| i.get())
-                .unwrap_or(0)
-                .saturating_sub(1)
-                .max(1);
-
-            batch_threads(
-                num_threads,
-                &bundles,
-                &duplicates,
-                &options,
-                filter_ext,
-            )
-        } else if let Ok(bundle) = File::open(&target) {
-            options.target = target.parent().unwrap();
-
-            let bundle_hash = bundle_hash_from(&target);
-            let mut buf = vec![0; 0x80000];
-            let mut rdr = ChunkReader::new(&mut buf, bundle);
-            Some(extract_bundle(
-                &mut Pool::new(),
-                &mut rdr,
-                &mut Vec::new(),
-                bundle_hash,
-                None,
-                &options,
-                filter_ext,
-            ).unwrap())
-        } else {
-            panic!("PATH argument was invalid");
-        };
-
-        println!();
-        if let Some(num_files) = num_files {
-            let ms = start.elapsed().as_millis();
-            println!("DONE");
-            println!("took {}.{}s", ms / 1000, ms % 1000);
-            println!("extracted {num_files} files");
-        } else {
-            // TODO app exit code
-            println!("did not finish due to errors");
         }
+
+        let duplicates = Mutex::new(HashMap::with_capacity(0x10000));
+        let num_threads = thread::available_parallelism()
+            .map(|i| i.get())
+            .unwrap_or(0)
+            .saturating_sub(1)
+            .max(1);
+
+        batch_threads(
+            num_threads,
+            &bundles,
+            &duplicates,
+            &options,
+            filter_ext,
+        )
+    } else if let Ok(bundle) = File::open(&target) {
+        options.target = target.parent().unwrap();
+
+        let bundle_hash = bundle_hash_from(&target);
+        let mut buf = vec![0; 0x80000];
+        let mut rdr = ChunkReader::new(&mut buf, bundle);
+        Some(extract_bundle(
+            &mut Pool::new(),
+            &mut rdr,
+            &mut Vec::new(),
+            bundle_hash,
+            None,
+            &options,
+            filter_ext,
+        ).unwrap())
+    } else {
+        panic!("PATH argument was invalid");
+    };
+
+    println!();
+    if let Some(num_files) = num_files {
+        let ms = start.elapsed().as_millis();
+        println!("DONE");
+        println!("took {}.{}s", ms / 1000, ms % 1000);
+        println!("extracted {num_files} files");
+    } else {
+        // TODO app exit code
+        println!("did not finish due to errors");
     }
 
     Ok(())
