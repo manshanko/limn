@@ -7,18 +7,20 @@ Extractor for the bundle format used in the game Warhammer 40k Darktide.
 
 Extract all files:
 ```
-limn.exe "C:\Program Files (x86)\Steam\steamapps\common\Warhammer 40,000 Darktide\bundle"
+limn -i "C:\Program Files (x86)\Steam\steamapps\common\Warhammer 40,000 Darktide\bundle" *
 ```
 
 Extract only lua files:
 ```
-limn.exe "C:\Program Files (x86)\Steam\steamapps\common\Warhammer 40,000 Darktide\bundle" lua
+limn -i "C:\Program Files (x86)\Steam\steamapps\common\Warhammer 40,000 Darktide\bundle" lua
 ```
 
-With the Steam version of Darktide automatic directory lookup is used when path is `-`:
+With the Steam version of Darktide automatic directory lookup is used when no path is specified:
 ```
-limn.exe - lua
+limn lua
 ```
+
+See `limn --help` for more options.
 
 ## Dictionary
 
