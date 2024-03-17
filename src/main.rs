@@ -410,7 +410,7 @@ fn load_oodle(
     path: &Path,
     darktide_path: Option<&PathBuf>,
 ) -> Result<oodle::Oodle, io::Error> {
-    match oodle::Oodle::load(path) {
+    match oodle::Oodle::load(name) {
         Ok(out) => Ok(out),
         Err(e) => {
             let oodle_path = format!("binaries/{name}");
