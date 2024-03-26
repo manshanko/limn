@@ -44,12 +44,15 @@ fn print_help() {
     println!("    <FILTER>  Extract files with matching extension. Supports \"*\" as a wildcard.");
     println!();
     println!("OPTIONS:");
+    println!("        --dump-hashes         Dump file extension and name hashes.");
     println!("        --dump-raw            Extract files without converting contents.");
     println!("    -i, --input               Bundle or directory of bundles to extract.");
     println!("    -f, --filter <FILTER>     Only extract files with matching extension.");
 }
 
 struct Args {
+    dump_hashes: bool,
+
     // always dump files raw instead of using crate::file::Extractor
     dump_raw: bool,
 
@@ -64,6 +67,7 @@ struct Args {
 fn parse_args() -> Result<Args, lexopt::Error> {
     use lexopt::prelude::*;
 
+    let mut dump_hashes = false;
     let mut dump_raw = false;
 
     let mut target = None;
@@ -74,6 +78,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
     while let Some(arg) = parser.next()? {
         num_args += 1;
         match &arg {
+            Long("dump-hashes") => dump_hashes = true,
             Long("dump-raw") => dump_raw = true,
             Short('i') | Long("input") => target = Some(PathBuf::from(parser.value()?)),
             Long("help") => {
@@ -113,6 +118,11 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         std::process::exit(0);
     }
 
+    // skip file extraction
+    if dump_hashes && filter_ext.is_none() {
+        filter_ext = Some(Some(0));
+    }
+
     let darktide_path = steam_find::get_steam_app(1361210).map(|app| app.path);
     let target = target.unwrap_or_else(|| {
         match &darktide_path {
@@ -125,6 +135,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
     });
 
     Ok(Args {
+        dump_hashes,
         dump_raw,
 
         target,
@@ -135,6 +146,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Args {
+        dump_hashes,
         dump_raw,
 
         target,
@@ -177,6 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         as_blob: dump_raw,
     };
 
+    let duplicates = Mutex::new(HashMap::new());
     let start = Instant::now();
     let num_files = if let Ok(read_dir) = fs::read_dir(&target) {
         let mut bundles = Vec::new();
@@ -195,13 +208,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let duplicates = Mutex::new(HashMap::with_capacity(0x10000));
         let num_threads = thread::available_parallelism()
             .map(|i| i.get())
             .unwrap_or(0)
             .saturating_sub(1)
             .max(1);
 
+        let mut dupes = duplicates.lock().unwrap();
+        dupes.reserve(0x10000);
+        drop(dupes);
         batch_threads(
             num_threads,
             &bundles,
@@ -220,7 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut rdr,
             &mut Vec::new(),
             bundle_hash,
-            None,
+            &duplicates,
             &options,
             filter_ext,
         ).unwrap())
@@ -234,6 +249,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("DONE");
         println!("took {}.{}s", ms / 1000, ms % 1000);
         println!("extracted {num_files} files");
+
+        if dump_hashes {
+            let mut dupes = duplicates.into_inner()
+                .unwrap()
+                .into_iter()
+                .map(|(hashes, _count)| hashes)
+                .collect::<Vec<_>>();
+            dupes.sort();
+            //let mut out = String::with_capacity((dupes.len() + 2) * (16 + 1 + 16 + 1));
+            //out.push_str("name,extension\n");
+            //for (ext, name) in &dupes {
+            //    writeln!(&mut out, "{name:016x},{ext:016x}").unwrap();
+            //}
+            //fs::write("hashes.csv", &out)?;
+            let mut bin = Vec::with_capacity(dupes.len() * 16);
+            for (ext, name) in &dupes {
+                bin.extend_from_slice(&ext.to_le_bytes());
+                bin.extend_from_slice(&name.to_le_bytes());
+            }
+            fs::write("hashes.bin", &bin)?;
+            println!("{} file extension and name hashes written to \"hashes.bin\"", dupes.len());
+        }
     } else {
         // TODO app exit code
         println!("did not finish due to errors");
@@ -384,7 +421,7 @@ fn thread_work(
             &mut rdr,
             &mut bundle_buf,
             Some(*bundle_hash),
-            Some(&duplicates),
+            &duplicates,
             &options,
             filter,
         ).unwrap();
@@ -398,34 +435,41 @@ fn extract_bundle(
     mut rdr: impl Read + Seek,
     bundle_buf: &mut Vec<u8>,
     bundle_hash: Option<u64>,
-    duplicates: Option<&Mutex<HashMap<(u64, u64), u64>>>,
+    duplicates: &Mutex<HashMap<(u64, u64), u64>>,
     options: &ExtractOptions<'_>,
     filter: Option<u64>,
 ) -> io::Result<u32> {
     bundle_buf.clear();
     let mut bundle = BundleFd::new(bundle_hash, &mut rdr)?;
-    let mut num_targets = if let Some(filter_ext) = filter {
-        let mut count = 0;
+    let targets = if let Some(filter_ext) = filter {
+        let mut targets = Vec::new();
+        let mut dupes = duplicates.lock().unwrap();
         for file in bundle.index() {
-            if file.ext == filter_ext {
+            let key = (file.ext, file.name);
+            let entry = dupes.entry(key).or_insert(0);
+            *entry += 1;
+
+            if *entry == 1 && file.ext == filter_ext {
                 if options.skip_unknown
                     && !options.dictionary.contains_key(&MurmurHash::from(file.name))
                 {
                     continue;
                 }
-                count += 1;
+                targets.push((file.ext, file.name));
             }
         }
+        drop(dupes);
 
-        if count == 0 {
+        if targets.is_empty() {
             return Ok(0);
         } else {
-            Some(count)
+            Some(targets)
         }
     } else {
         None
     };
 
+    let mut targets = targets.as_ref().map(|t| &t[..]);
     let mut count = 0;
     let mut files = bundle.files(options.oodle, bundle_buf);
     while let Ok(Some(file)) = files.next_file().map_err(|e| panic!("{:016x} - {}", bundle_hash.unwrap_or(0), e)) {
@@ -437,33 +481,24 @@ fn extract_bundle(
             continue;
         }
 
-        if let Some(filter_ext) = filter {
-            let num_targets = num_targets.as_mut().unwrap();
-            if *num_targets == 0 {
-                break;
-            }
-
-            if file.ext != filter_ext {
-                continue;
+        if let Some(targets) = &mut targets {
+            let (ext, name) = targets.first().unwrap();
+            if *ext == file.ext && *name == file.name {
+                (_, *targets) = targets.split_at(1);
             } else {
-                *num_targets -= 1;
-            }
-        }
-
-        if let Some(duplicates) = duplicates {
-            let key = (file.name, file.ext);
-            let mut duplicates = duplicates.lock().unwrap();
-            if let Some(num_dupes) = duplicates.get_mut(&key) {
-                *num_dupes += 1;
                 continue;
-            } else {
-                duplicates.insert(key, 1);
             }
         }
 
         match file::extract(file, pool, options) {
             Ok(_wrote) => count += 1,
             Err(_e) => (),//eprintln!("{e}"),
+        }
+
+        if let Some(targets) = &targets {
+            if targets.is_empty() {
+                break;
+            }
         }
     }
 
