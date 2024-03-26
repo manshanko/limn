@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -202,6 +203,21 @@ fn data_path_from(buffer: &[u8]) -> Option<&str> {
     }
 }
 
-
-
-
+fn file_from_data_path(
+    mut shared: &mut [u8],
+    target: &Path,
+    path: &[u8],
+) -> io::Result<File> {
+    let path = path.split(|b| *b == 0).next().unwrap();
+    let path = data_path_from(&*path).unwrap();
+    let path = path_concat(target, &mut shared, path, None);
+    assert!(path.starts_with(target));
+    let Ok(fd) = File::open(path) else {
+        if cfg!(debug_assertions) {
+            panic!("failed to load {}", path.display());
+        }
+        return Err(io::Error::new(io::ErrorKind::NotFound,
+            "failed to find texture resource file under data/*/*"));
+    };
+    Ok(fd)
+}

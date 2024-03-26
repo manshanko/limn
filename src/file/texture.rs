@@ -7,7 +7,6 @@
 //! Only the largest mipmap in a `texture` is extracted. When extracting the
 //! mipmap chunks are sorted to restore image dimensions.
 
-use std::fs::File;
 use crate::read::ChunkReader;
 use super::*;
 
@@ -40,7 +39,7 @@ impl Extractor for TextureParser {
 
                 let mut data_path = [0_u8; 31];
                 entry.read(&mut data_path[..body_size as usize]).unwrap();
-                let file = data_path_from_buffer(shared, options.target, &data_path).unwrap();
+                let file = file_from_data_path(shared, options.target, &data_path).unwrap();
                 let slice;
                 (slice, shared) = shared.split_at_mut(0x10000);
                 Err(ChunkReader::new(slice, file))
@@ -148,7 +147,7 @@ impl Extractor for TextureParser {
                 let num_chunks = chunk_width * chunk_height;
                 assert!(chunks.len() >= num_chunks as usize);
 
-                let data_fd = data_path_from_buffer(shared, options.target, &data_path).unwrap();
+                let data_fd = file_from_data_path(shared, options.target, &data_path).unwrap();
                 let slice;
                 (slice, _) = shared.split_at_mut(0x10000);
                 let mut data_rdr = ChunkReader::new(slice, data_fd);
@@ -179,25 +178,6 @@ impl Extractor for TextureParser {
             unreachable!()
         }
     }
-}
-
-fn data_path_from_buffer(
-    mut shared: &mut [u8],
-    target: &Path,
-    path: &[u8],
-) -> io::Result<File> {
-    let path = path.split(|b| *b == 0).next().unwrap();
-    let path = data_path_from(&*path).unwrap();
-    let path = path_concat(target, &mut shared, path, None);
-    assert!(path.starts_with(target));
-    let Ok(fd) = File::open(path) else {
-        if cfg!(debug_assertions) {
-            panic!("failed to load {}", path.display());
-        }
-        return Err(io::Error::new(io::ErrorKind::NotFound,
-            "failed to find texture resource file under data/*/*"));
-    };
-    Ok(fd)
 }
 
 fn check_dxt10(mut dxt10: &[u8]) {
