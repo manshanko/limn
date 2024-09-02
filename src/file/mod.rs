@@ -18,6 +18,7 @@ use crate::scoped_fs::ScopedFs;
 
 mod bones;
 mod lua;
+mod material;
 mod package;
 mod strings;
 mod texture;
@@ -59,6 +60,7 @@ pub(crate) fn extract(
     let extractor: Option<&'static dyn Extractor> = 'res: {Some(match entry.ext {
         0x18dead01056b72e9 => &bones::BonesParser,
         0xa14e8dfa2cd117e2 => &lua::LuaParser,
+        0xeac0b497876adedf => &material::MaterialParser,
         0xad9c6d9ed1e5e77a => &package::PackageParser,
         0x0d972bab10b40fd3 => &strings::StringsParser,
         0xcd4238c6a0c69e32 => &texture::TextureParser,
