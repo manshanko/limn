@@ -48,6 +48,7 @@ pub(crate) struct ExtractOptions<'a> {
     pub(crate) oodle: &'a Oodle,
     pub(crate) dictionary: &'a HashMap<MurmurHash, &'a str>,
     pub(crate) dictionary_short: &'a HashMap<MurmurHash32, &'a str>,
+    pub(crate) skip_extract: bool,
     pub(crate) skip_unknown: bool,
     pub(crate) as_blob: bool,
 }

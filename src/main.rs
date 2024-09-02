@@ -118,7 +118,7 @@ fn parse_args() -> Result<Args, lexopt::Error> {
         std::process::exit(0);
     }
 
-    // skip file extraction
+    // hack to signal dupe/hash tracking
     if dump_hashes && filter_ext.is_none() {
         filter_ext = Some(Some(0));
     }
@@ -179,12 +179,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let out_fs = if dump_hashes {
+        ScopedFs::new_null(Path::new("./out"))
+    } else {
+        ScopedFs::new(Path::new("./out"))
+    };
+
     let mut options = ExtractOptions {
         target: &target,
-        out: ScopedFs::new(Path::new("./out")),
+        out: out_fs,
         oodle: &oodle,
         dictionary: &dictionary,
         dictionary_short: &dictionary.iter().map(|(k, v)| (k.clone_short(), *v)).collect(),
+        skip_extract: dump_hashes,
         skip_unknown,
         as_blob: dump_raw,
     };
@@ -248,7 +255,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ms = start.elapsed().as_millis();
         println!("DONE");
         println!("took {}.{}s", ms / 1000, ms % 1000);
-        println!("extracted {num_files} files");
+        if !options.skip_extract {
+            println!("extracted {num_files} files");
+        }
 
         if dump_hashes {
             let mut dupes = duplicates.into_inner()
@@ -257,6 +266,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|(hashes, _count)| hashes)
                 .collect::<Vec<_>>();
             dupes.sort();
+            let mut dupes = &dupes[..];
+            if let Some(filter) = filter_ext.filter(|f| *f != 0) {
+                let start = dupes.partition_point(|(ext, _)| *ext < filter);
+                let end = dupes.partition_point(|(ext, _)| *ext <= filter);
+                dupes = &dupes[start..end];
+            }
             //let mut out = String::with_capacity((dupes.len() + 2) * (16 + 1 + 16 + 1));
             //out.push_str("name,extension\n");
             //for (ext, name) in &dupes {
@@ -264,7 +279,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             //}
             //fs::write("hashes.csv", &out)?;
             let mut bin = Vec::with_capacity(dupes.len() * 16);
-            for (ext, name) in &dupes {
+            for (ext, name) in dupes {
                 bin.extend_from_slice(&ext.to_le_bytes());
                 bin.extend_from_slice(&name.to_le_bytes());
             }
@@ -468,6 +483,10 @@ fn extract_bundle(
     } else {
         None
     };
+
+    if options.skip_extract {
+        return Ok(targets.as_ref().map(|t| t.len() as u32).unwrap_or(0));
+    }
 
     let mut targets = targets.as_ref().map(|t| &t[..]);
     let mut count = 0;
