@@ -56,6 +56,10 @@ impl Extractor for TextureParser {
         let kind = rdr.read_u32::<LE>().unwrap();
         assert!(kind == 1 || kind == 0, "unexpected texture type {kind}");
 
+        let parent = file_path.parent().unwrap_or(Path::new("."));
+        let file_name = file_path.file_stem().unwrap().to_str().unwrap();
+        let out_path = path_concat(parent, &mut shared, file_name, Some("dds"));
+
         if kind == 1 {
             let deflate_size = rdr.read_u32::<LE>().unwrap() as usize;
             let inflate_size = rdr.read_u32::<LE>().unwrap() as usize;
@@ -80,10 +84,6 @@ impl Extractor for TextureParser {
             let _image_size = u32::from_le_bytes(<[u8; 4]>::try_from(&skip[60..64]).unwrap());
 
             let meta_size = u16::try_from(rdr.read_u32::<LE>().unwrap()).unwrap();
-
-            let parent = file_path.parent().unwrap_or(Path::new("."));
-            let file_name = file_path.file_stem().unwrap().to_str().unwrap();
-            let out_path = path_concat(parent, &mut shared, file_name, Some("dds"));
 
             if meta_size == 0 {
                 let _unknown = rdr.read_u32::<LE>().unwrap();
@@ -169,12 +169,13 @@ impl Extractor for TextureParser {
                 })
             }
         } else if kind == 0 {
-            //for _ in 0..8 {
-            //    rdr.read_u8().unwrap();
-            //}
-            //let mut fd = File::create(out_path).unwrap();
-            //io::copy(rdr, &mut fd)
-            Err(io::Error::new(io::ErrorKind::InvalidData, "unknown texture file kind"))
+            for _ in 0..8 {
+                rdr.read_u8().unwrap();
+            }
+
+            options.open(out_path, |out| {
+                std::io::copy(rdr, out)
+            })
         } else {
             unreachable!()
         }
